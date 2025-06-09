@@ -57,11 +57,6 @@ export class TimerManager {
           timerData.createdAt
         );
         
-        // Configurar callback para cambios de estado
-        timer.setOnStateChangeCallback((timerId) => {
-          this.scheduleNextSave();
-        });
-
         // Si estaba corriendo, lo pausamos por seguridad al recargar
         if (timerData.state === 'running') {
           timer.stopCountdown();
@@ -125,11 +120,6 @@ export class TimerManager {
       console.log(`Creating new timer instance with ID: ${timerId}`);
       const timer = new TimerInstance(timerId, initialTime);
       
-      // Configurar callback para cambios de estado
-      timer.setOnStateChangeCallback((id) => {
-        this.scheduleNextSave();
-      });
-
       this.timers.set(timerId, timer);
       
       // Guardar inmediatamente si no es el timer por defecto

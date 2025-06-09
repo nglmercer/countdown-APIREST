@@ -1,9 +1,9 @@
 // types/timer.types.ts
 
 export interface WebSocketLike {
-    send: (message: string) => void;
-    id: string;
-  }
+  id: string;
+  send: (data: string) => void;
+}
   
   export interface TimerData {
     timerId: string | number;
