@@ -21,7 +21,7 @@ async function buildServer() {
     
     // Register static files plugin
     await fastify.register(fastifyStatic, {
-      root: path.join(__dirname, '..', 'public'),
+      root: path.join(__dirname, 'public'),
       prefix: '/', // optional: default '/'
     });
 

@@ -50307,7 +50307,7 @@ async function buildServer() {
   try {
     await fastify.register(import_websocket.default);
     await fastify.register(import__static.default, {
-      root: path2.join(__dirname, "..", "public"),
+      root: path2.join(__dirname, "public"),
       prefix: "/"
     });
     await fastify.register(timerRoutes);
@@ -50342,12 +50342,12 @@ async function start() {
 }
 process.on("SIGINT", async () => {
   console.log("Received SIGINT, shutting down gracefully...");
-  await fastify.close();
+  fastify.close();
   process.exit(0);
 });
 process.on("SIGTERM", async () => {
   console.log("Received SIGTERM, shutting down gracefully...");
-  await fastify.close();
+  fastify.close();
   process.exit(0);
 });
 start();

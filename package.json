@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "bun run --hot src/index.ts",
     "start": "bun src/index.ts",
-    "preview": "node dist/index.js"
+    "preview": "node dist/index.js",
+    "build": "bun build ./src/index.ts --outdir ./dist --target node"
   },
   "dependencies": {
     "@elysiajs/node": "^1.3.0",
