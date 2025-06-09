@@ -32,7 +32,7 @@
         const statusDiv = document.getElementById('status');
 
         let ws;
-        let currentTimerId = 0; // Default timer ID
+        let currentTimerId = 1; // Default timer ID
 
         const timerIdInput = document.createElement('input');
         timerIdInput.type = 'text';
@@ -63,7 +63,7 @@
             return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
         }
 
-        function connectWebSocket(timerId = 0) {
+        function connectWebSocket(timerId = 1) {
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.close();
             }
