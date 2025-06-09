@@ -28,8 +28,7 @@ export class TimerInstance {
     this.createdAt = createdAt ?? Date.now();
   }
 
-  // --- Métodos de Estado y Notificación ---
-
+  // --- Métodos de Estado y Notificación --- (sin cambios)
   private notifyStateChange(): void {
     if (this.onStateChange) {
       this.onStateChange(this.timerId);
@@ -42,8 +41,7 @@ export class TimerInstance {
       try {
         subscriber.send(messageString);
       } catch (e) {
-        console.error(`Error sending message to subscriber ${subscriber.id}`, e);
-        // Opcional: remover suscriptor si falla el envío
+        console.error(`Error sending message to subscriber for timer ${this.timerId}`, e);
         this.unsubscribe(subscriber.id);
       }
     });
@@ -58,13 +56,10 @@ export class TimerInstance {
     });
   }
 
-  // --- Métodos de Suscripción ---
-
+  // --- Métodos de Suscripción --- (sin cambios)
   subscribe(subscriber: WebSocketLike): void {
     this.subscribers.set(subscriber.id, subscriber);
-    console.log(`[Timer ${this.timerId}] Client ${subscriber.id} subscribed. Total: ${this.subscribers.size}`);
-    
-    // Enviar el estado actual inmediatamente al nuevo suscriptor
+    console.log(`[Timer ${this.timerId}] Client subscribed. Total: ${this.subscribers.size}`);
     subscriber.send(JSON.stringify({
       type: 'timeUpdate',
       time: this.currentTime,
@@ -78,7 +73,8 @@ export class TimerInstance {
     console.log(`[Timer ${this.timerId}] Client ${subscriberId} unsubscribed. Total: ${this.subscribers.size}`);
   }
 
-  // --- Métodos de Control del Temporizador ---
+
+  // --- Métodos de Control del Temporizador --- (con adiciones)
 
   startCountdown(interval: number = TIMER_CONSTANTS.DEFAULT_INTERVAL): void {
     if (this.state === 'running') return;
@@ -90,7 +86,7 @@ export class TimerInstance {
     }
 
     this.state = 'running';
-    this.broadcastTime(); // Notifica el cambio a 'running'
+    this.broadcastTime();
     this.notifyStateChange();
 
     this.intervalId = setInterval(() => {
@@ -100,7 +96,7 @@ export class TimerInstance {
       } else {
         this.state = 'completed';
         this.broadcast({ type: 'timerEnd', message: 'Timer finished!', timerId: this.timerId });
-        this.stopCountdown(); // Limpia el intervalo y notifica al manager
+        this.stopCountdown();
       }
     }, interval);
   }
@@ -110,23 +106,26 @@ export class TimerInstance {
       clearInterval(this.intervalId);
       this.intervalId = null;
     }
-    // Solo cambia el estado si estaba corriendo
     if (this.state === 'running') {
       this.state = this.currentTime <= 0 ? 'completed' : 'stopped';
-      this.broadcastTime(); // Notifica el nuevo estado
+      this.broadcastTime();
       this.notifyStateChange();
     }
   }
 
   setTime(newTime: number): void {
     TimerUtils.validateTime(newTime);
-    this.stopCountdown(); // Detener cualquier contador en marcha antes de cambiar el tiempo
+    this.stopCountdown();
     this.currentTime = newTime;
+    // También actualizamos el tiempo inicial al hacer un set explícito
+    this.initialTime = newTime; 
     this.state = newTime === 0 ? 'completed' : 'stopped';
     this.broadcastTime();
     this.notifyStateChange();
     console.log(TimerUtils.formatTimerLog(this.timerId, 'set to', this.currentTime));
   }
+  
+  // --- MÉTODOS DE MODIFICACIÓN DE TIEMPO ---
 
   add(seconds: number): void {
     TimerUtils.validateSeconds(seconds, 'add');
@@ -139,24 +138,73 @@ export class TimerInstance {
     console.log(TimerUtils.formatSecondsLog(seconds, 'added to', this.timerId, this.currentTime));
   }
 
-  rest(seconds: number): void {
-    TimerUtils.validateSeconds(seconds, 'rest');
+  // Renombrado 'rest' a 'subtract' por claridad
+  subtract(seconds: number): void {
+    TimerUtils.validateSeconds(seconds, 'subtract');
     this.currentTime = Math.max(0, this.currentTime - seconds);
     if (this.currentTime === 0) {
       this.state = 'completed';
     }
     this.broadcastTime();
     this.notifyStateChange();
-    console.log(TimerUtils.formatSecondsLog(seconds, 'rested from', this.timerId, this.currentTime));
+    console.log(TimerUtils.formatSecondsLog(seconds, 'subtracted from', this.timerId, this.currentTime));
+  }
+
+  // NUEVO: Reinicia al tiempo inicial
+  reset(): void {
+    this.stopCountdown();
+    this.currentTime = this.initialTime;
+    this.state = this.currentTime === 0 ? 'completed' : 'stopped';
+    this.broadcastTime();
+    this.notifyStateChange();
+    console.log(TimerUtils.formatTimerLog(this.timerId, 'reset to initial time', this.currentTime));
   }
   
-  // --- Getters y otros ---
+  // NUEVO: Multiplica el tiempo actual
+  multiply(factor: number): void {
+    if (typeof factor !== 'number' || factor < 0) {
+        throw new Error('Factor must be a non-negative number.');
+    }
+    this.currentTime = Math.round(this.currentTime * factor);
+    if (this.state === 'completed' && this.currentTime > 0) {
+      this.state = 'stopped';
+    }
+    this.broadcastTime();
+    this.notifyStateChange();
+    console.log(`[Timer ${this.timerId}] Time multiplied by ${factor}. New time: ${this.currentTime}`);
+  }
 
+  // NUEVO: Divide el tiempo actual
+  divide(divisor: number): void {
+    if (typeof divisor !== 'number' || divisor <= 0) {
+        throw new Error('Divisor must be a positive number greater than zero.');
+    }
+    this.currentTime = Math.round(this.currentTime / divisor);
+    if (this.currentTime === 0 && this.state !== 'completed') {
+      this.state = 'completed';
+    }
+    this.broadcastTime();
+    this.notifyStateChange();
+    console.log(`[Timer ${this.timerId}] Time divided by ${divisor}. New time: ${this.currentTime}`);
+  }
+
+  // --- Getters y otros --- (con adición)
   getTime(): number { return this.currentTime; }
   getState(): TimerState { return this.state; }
   getInitialTime(): number { return this.initialTime; }
   hasSubscribers(): boolean { return this.subscribers.size > 0; }
   isExpired(): boolean { return TimerUtils.isExpired(this.createdAt); }
+  
+  getStatus() {
+    return {
+      timerId: this.timerId,
+      currentTime: this.currentTime,
+      initialTime: this.initialTime,
+      state: this.state,
+      createdAt: new Date(this.createdAt).toISOString(),
+    };
+  }
+
   toJSON(): TimerData {
     return {
       timerId: this.timerId,

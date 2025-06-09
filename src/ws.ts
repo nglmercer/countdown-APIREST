@@ -84,7 +84,7 @@ function handleWebSocketConnection(
           if (typeof value === 'number') currentTimer.add(value);
           break;
         case 'restTime':
-          if (typeof value === 'number') currentTimer.rest(value);
+          if (typeof value === 'number') currentTimer.subtract(value);
           break;
         case 'getTime':
             // El estado ya se envía en cada update, pero podemos forzar uno si se pide

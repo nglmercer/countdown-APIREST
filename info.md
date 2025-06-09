@@ -7,7 +7,7 @@ Este proyecto implementa una API de temporizador simple utilizando ElysiaJS y Bu
 - **Control del Temporizador:**
     - `setTime(newTime: number)`: Establece el temporizador a un valor específico en segundos.
     - `add(seconds: number)`: Añade segundos al tiempo actual del temporizador.
-    - `rest(seconds: number)`: Resta segundos del tiempo actual del temporizador (no permite valores negativos, se detiene en 0).
+    - `subtract(seconds: number)`: Resta segundos del tiempo actual del temporizador (no permite valores negativos, se detiene en 0).
     - `getTime(): number`: Obtiene el tiempo actual del temporizador en segundos.
 - **Comunicación por WebSocket (`/ws`):**
     - Envía actualizaciones del temporizador en tiempo real a los clientes conectados.
