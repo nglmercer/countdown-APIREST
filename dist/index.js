@@ -50298,8 +50298,10 @@ function handleWebSocketConnection(connection, req, timerId, timerManager2) {
 }
 
 // src/index.ts
+import { fileURLToPath } from "url";
 import path2 from "path";
-var __dirname = "C:\\Users\\Admin.DESKTOP-GQ54BIK\\Documents\\APIREST\\src";
+var __filename2 = fileURLToPath(import.meta.url);
+var __dirname2 = path2.dirname(__filename2);
 var fastify = import_fastify.default({
   logger: true
 });
@@ -50307,7 +50309,7 @@ async function buildServer() {
   try {
     await fastify.register(import_websocket.default);
     await fastify.register(import__static.default, {
-      root: path2.join(__dirname, "public"),
+      root: path2.join(__dirname2, "public"),
       prefix: "/"
     });
     await fastify.register(timerRoutes);

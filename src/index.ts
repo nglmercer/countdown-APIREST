@@ -8,7 +8,12 @@ import { p2pRoutes } from './tcprouter';
 import { createWsTimerRoutes } from './ws';
 import { P2PService,p2pserver } from './p2p/p2pService';
 import { API_PORT } from './config';
+import { fileURLToPath } from 'url';
 import path from 'path';
+
+// 👇 Estas dos líneas reemplazan __dirname en ESM
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const fastify = Fastify({ 
   logger: true 
