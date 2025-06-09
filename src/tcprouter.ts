@@ -1,11 +1,10 @@
 // src/http.ts
 import { Elysia, t } from 'elysia';
-import type { TimerManager } from './timer';
 import type { P2PService } from './p2p/p2pService'; // Importa el tipo
 
 // Elysia infiere el tipo de `p2p` del `decorate` que haremos en el archivo principal
 // por lo que no necesitas pasarlo como argumento aquí.
-export const createHttpTimerRouter = (timerManager: TimerManager) => {
+export const createHttpeers = () => {
   return new Elysia({ prefix: '/api' })
     // --- NUEVAS RUTAS P2P ---
 

@@ -1,8 +1,5 @@
 // src/p2pService.ts
 import { randomUUID } from 'crypto';
-import type { Socket } from 'net';
-import type { TimerManager } from '../timer'; // Asumiendo que tienes este tipo definido
-
 // Importa todas tus funciones y singletons P2P
 import { P2P_INSTANCE_NAME_PREFIX } from '../config';
 import { peerManager } from './peerManager';
@@ -19,12 +16,10 @@ import { Server } from 'http';
 
 export class P2PService {
   private instanceName: string;
-  private timerManager: TimerManager;
 
-  constructor(timerManager: TimerManager) {
+  constructor() {
     // Cada instancia necesita un nombre único para ser identificada en la red
     this.instanceName = P2P_INSTANCE_NAME_PREFIX + randomUUID().slice(0, 8);
-    this.timerManager = timerManager;
     console.log(`[P2P] Nombre de esta instancia: ${this.instanceName}`);
   }
 
