@@ -7,7 +7,7 @@ export const P2P_MESSAGE_DELIMITER = '\n';
 
 // Podrías añadir configuraciones de Fastify aquí también si lo deseas
 export const API_HOST = '0.0.0.0';
-export const API_PORT = getPortFromArgs() || parseInt(process.env.PORT || "3001", 10);
+export const API_PORT = getPortFromArgs() || parseInt(process.env.PORT || "3000", 10);
 
 /**
  * Obtiene un número de puerto de los argumentos de la línea de comandos.

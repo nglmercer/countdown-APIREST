@@ -1,71 +1,105 @@
-// src/http.ts
-import { Elysia, t } from 'elysia';
-import { TimerManager } from './timer';
-
-// Helper to get timerId from query or use default
+import fastify, { FastifyInstance, FastifyPluginAsync, FastifyRequest } from 'fastify';
+import { timerManager } from './core/timer-manager';
 const getTimerIdFromQuery = (query: any): string | number => {
   return query && (query.timerId !== undefined) ? query.timerId : 0;
 };
+const timerRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) => {
 
-export const createHttpTimerRouter = (timerManager: TimerManager) => {
-  return new Elysia({ prefix: '/timer' })
-    .post('/set', ({ body, query }) => {
-      const timerId = getTimerIdFromQuery(query);
-      const timer = timerManager.getOrCreateTimer(timerId, body.time); // Pass initial time if creating
-      try {
-        timer.setTime(body.time);
-        timer.startCountdown(); // Ensure countdown is active
-        return { success: true, timerId, currentTime: timer.getTime() };
-      } catch (e: any) {
-        return { success: false, timerId, error: e.message };
+  // POST /timer/set
+  fastify.post('/set', {
+    schema: {
+      body: {
+        type: 'object',
+        properties: { time: { type: 'number' } },
+        required: ['time'],
+      },
+      querystring: {
+        type: 'object',
+        properties: {
+          timerId: { oneOf: [{ type: 'string' }, { type: 'number' }] }
+        }
       }
-    }, {
-      body: t.Object({
-        time: t.Number()
-      }),
-      query: t.Optional(t.Object({ timerId: t.Optional(t.Union([t.String(), t.Number()])) }))
-    })
-    .post('/add', ({ body, query }) => {
-      const timerId = getTimerIdFromQuery(query);
-      const timer = timerManager.getOrCreateTimer(timerId);
-      try {
-        timer.add(body.seconds);
-        timer.startCountdown();
-        return { success: true, timerId, currentTime: timer.getTime() };
-      } catch (e: any) {
-        return { success: false, timerId, error: e.message };
-      }
-    }, {
-      body: t.Object({
-        seconds: t.Number()
-      }),
-      query: t.Optional(t.Object({ timerId: t.Optional(t.Union([t.String(), t.Number()])) }))
-    })
-    .post('/rest', ({ body, query }) => {
-      const timerId = getTimerIdFromQuery(query);
-      const timer = timerManager.getOrCreateTimer(timerId);
-      try {
-        timer.rest(body.seconds);
-        timer.startCountdown();
-        return { success: true, timerId, currentTime: timer.getTime() };
-      } catch (e: any) {
-        return { success: false, timerId, error: e.message };
-      }
-    }, {
-      body: t.Object({
-        seconds: t.Number()
-      }),
-      query: t.Optional(t.Object({ timerId: t.Optional(t.Union([t.String(), t.Number()])) }))
-    })
-    .get('/time', ({ query }) => {
-      const timerId = getTimerIdFromQuery(query);
-      const timer = timerManager.getTimer(timerId);
-      if (timer) {
-        return { timerId, currentTime: timer.getTime() };
-      } else {
-        return { timerId, error: 'Timer not found' };
-      }
-    }, {
-      query: t.Optional(t.Object({ timerId: t.Optional(t.Union([t.String(), t.Number()])) }))
-    });
+    }
+  }, async (request, reply) => {
+    const { body, query } = request as any;
+    const timerId = getTimerIdFromQuery(query);
+    // Accedemos al servicio a través de la instancia de fastify
+    const timer = timerManager.getOrCreateTimer(timerId, body.time);
+    try {
+      timer.setTime(body.time);
+      timer.startCountdown();
+      return { success: true, timerId, currentTime: timer.getTime() };
+    } catch (e: any) {
+      reply.status(500);
+      return { success: false, timerId, error: e.message };
+    }
+  });
+
+  // POST /timer/add
+  fastify.post('/add', {
+    schema: {
+      body: {
+        type: 'object',
+        properties: { seconds: { type: 'number' } },
+        required: ['seconds'],
+      },
+      querystring: { /* ... schema idéntico al de /set ... */ }
+    }
+  }, async (request, reply) => {
+    const { body, query } = request as any;
+    const timerId = getTimerIdFromQuery(query);
+    const timer = timerManager.getOrCreateTimer(timerId);
+    try {
+      timer.add(body.seconds);
+      timer.startCountdown();
+      return { success: true, timerId, currentTime: timer.getTime() };
+    } catch (e: any) {
+      reply.status(500);
+      return { success: false, timerId, error: e.message };
+    }
+  });
+
+  // POST /timer/rest (mantenemos el nombre original)
+  fastify.post('/rest', {
+    schema: {
+      body: {
+        type: 'object',
+        properties: { seconds: { type: 'number' } },
+        required: ['seconds'],
+      },
+      querystring: { /* ... schema idéntico al de /set ... */ }
+    }
+  }, async (request, reply) => {
+    const { body, query } = request as any;
+    const timerId = getTimerIdFromQuery(query);
+    const timer = timerManager.getOrCreateTimer(timerId);
+    try {
+      timer.rest(body.seconds);
+      timer.startCountdown();
+      return { success: true, timerId, currentTime: timer.getTime() };
+    } catch (e: any) {
+      reply.status(500);
+      return { success: false, timerId, error: e.message };
+    }
+  });
+
+  // GET /timer/time
+  fastify.get('/time', {
+    schema: {
+      querystring: { /* ... schema idéntico al de /set ... */ }
+    }
+  }, async (request, reply) => {
+    const { query } = request as any;
+    const timerId = getTimerIdFromQuery(query);
+    const timer = timerManager.getTimer(timerId);
+    if (timer) {
+      return { timerId, currentTime: timer.getTime() };
+    } else {
+      reply.status(404);
+      return { timerId, error: 'Timer not found' };
+    }
+  });
+};
+export {
+  timerRoutes
 }

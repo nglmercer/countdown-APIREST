@@ -201,3 +201,4 @@ export class TimerManager {
     }
   }
 }
+export const timerManager = new TimerManager();

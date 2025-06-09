@@ -1,42 +1,88 @@
 // src/index.ts
-import { Elysia } from 'elysia';
-import { staticPlugin } from '@elysiajs/static';
-import { TimerManager } from './timer';
+import Fastify from 'fastify';
+import fastifyStatic from '@fastify/static';
+import fastifyWebsocket from '@fastify/websocket';
+import { timerManager } from './core/timer-manager';
+import { timerRoutes } from './http';
+import { p2pRoutes } from './tcprouter';
+import { createWsTimerRoutes } from './ws';
+import { P2PService,p2pserver } from './p2p/p2pService';
+import { API_PORT } from './config';
+import path from 'path';
 
-import { createHttpTimerRouter } from './http';
-import { createWsTimerRouter } from './ws';
-import { createHttpeers } from './tcprouter';
-import { P2PService } from './p2p/p2pService'
-const app = new Elysia();
-const timerManager = new TimerManager();
+const fastify = Fastify({ 
+  logger: true 
+});
 
+async function buildServer() {
+  try {
+    // Register WebSocket support
+    await fastify.register(fastifyWebsocket);
+    
+    // Register static files plugin
+    await fastify.register(fastifyStatic, {
+      root: path.join(__dirname, '..', 'public'),
+      prefix: '/', // optional: default '/'
+    });
 
+    // Register HTTP timer routes
+    await fastify.register(timerRoutes);
 
-// Initialize and use the routers
-const httpRouter = createHttpTimerRouter(timerManager);
-const wsRouter = createWsTimerRouter(timerManager);
-const peerRouter = createHttpeers()
-app
-  .use(staticPlugin({
-    assets: "public", // carpeta donde están tus archivos estáticos
-    prefix: "/", // prefijo de la URL (opcional)
-  }))
-  .use(wsRouter)
-  .use(httpRouter)
-  .use(peerRouter)
-  .listen(3000, () => {
-    console.log('🦊 Elysia is running at http://localhost:3000');
-    console.log('🕒 Timer WebSocket is available at ws://localhost:3000/ws or ws://localhost:3000/ws/YOUR_TIMER_ID');
-    console.log('📁 Static files served from /public');
+    await fastify.register(p2pRoutes);
 
-  });
-const p2pserver = new P2PService();
-try {
-  p2pserver.start();
-} catch (error) {
-  console.error(error,"p2p error")
-  p2pserver.stop();
+    // Register WebSocket routes
+    await fastify.register(createWsTimerRoutes);
+
+    return fastify;
+  } catch (err) {
+    fastify.log.error(err);
+    process.exit(1);
+  }
 }
 
-  export type App = typeof app;
-  
+async function start() {
+  try {
+    const server = await buildServer();
+    
+    // Start the server
+    await server.listen({ 
+      port: API_PORT, 
+      host: '0.0.0.0' 
+    });
+    
+    console.log(`🚀 Fastify server is running at http://localhost:${API_PORT}`);
+    console.log('📁 Static files served from /public');
+    console.log(`🕒 Timer WebSocket is available at ws://localhost:${API_PORT}/ws or ws://localhost:${API_PORT}/ws/YOUR_TIMER_ID`);
+
+    // Initialize P2P service
+    try {
+      p2pserver.start();
+    } catch (error) {
+      console.error(error, "p2p error");
+      p2pserver.stop();
+    }
+
+  } catch (err) {
+    fastify.log.error(err);
+    process.exit(1);
+  }
+}
+
+// Handle graceful shutdown
+process.on('SIGINT', async () => {
+  console.log('Received SIGINT, shutting down gracefully...');
+  await fastify.close();
+  process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+  console.log('Received SIGTERM, shutting down gracefully...');
+  await fastify.close();
+  process.exit(0);
+});
+
+// Start the server
+start();
+
+export { fastify };
+export type App = typeof fastify;
