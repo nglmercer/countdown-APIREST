@@ -46016,6 +46016,315 @@ var require_websocket2 = __commonJS((exports, module) => {
   module.exports.fastifyWebsocket = fastifyWebsocket;
 });
 
+// node_modules/@fastify/cors/vary.js
+var require_vary = __commonJS((exports, module) => {
+  var { FifoMap: FifoCache } = require_toad_cache();
+  var validFieldnameRE = /^[!#$%&'*+\-.^\w`|~]+$/u;
+  function validateFieldname(fieldname) {
+    if (validFieldnameRE.test(fieldname) === false) {
+      throw new TypeError("Fieldname contains invalid characters.");
+    }
+  }
+  function parse(header) {
+    header = header.trim().toLowerCase();
+    const result = [];
+    if (header.length === 0) {} else if (header.indexOf(",") === -1) {
+      result.push(header);
+    } else {
+      const il = header.length;
+      let i = 0;
+      let pos = 0;
+      let char;
+      for (i;i < il; ++i) {
+        char = header[i];
+        if (char === " ") {
+          pos = i + 1;
+        } else if (char === ",") {
+          if (pos !== i) {
+            result.push(header.slice(pos, i));
+          }
+          pos = i + 1;
+        }
+      }
+      if (pos !== i) {
+        result.push(header.slice(pos, i));
+      }
+    }
+    return result;
+  }
+  function createAddFieldnameToVary(fieldname) {
+    const headerCache = new FifoCache(1000);
+    validateFieldname(fieldname);
+    return function(reply) {
+      let header = reply.getHeader("Vary");
+      if (!header) {
+        reply.header("Vary", fieldname);
+        return;
+      }
+      if (header === "*") {
+        return;
+      }
+      if (fieldname === "*") {
+        reply.header("Vary", "*");
+        return;
+      }
+      if (Array.isArray(header)) {
+        header = header.join(", ");
+      }
+      if (headerCache.get(header) === undefined) {
+        const vals = parse(header);
+        if (vals.indexOf("*") !== -1) {
+          headerCache.set(header, "*");
+        } else if (vals.indexOf(fieldname.toLowerCase()) === -1) {
+          headerCache.set(header, header + ", " + fieldname);
+        } else {
+          headerCache.set(header, null);
+        }
+      }
+      const cached = headerCache.get(header);
+      if (cached !== null) {
+        reply.header("Vary", cached);
+      }
+    };
+  }
+  exports.createAddFieldnameToVary = createAddFieldnameToVary;
+  exports.addOriginToVaryHeader = createAddFieldnameToVary("Origin");
+  exports.addAccessControlRequestHeadersToVaryHeader = createAddFieldnameToVary("Access-Control-Request-Headers");
+  exports.parse = parse;
+});
+
+// node_modules/@fastify/cors/index.js
+var require_cors = __commonJS((exports, module) => {
+  var fp = require_plugin2();
+  var {
+    addAccessControlRequestHeadersToVaryHeader,
+    addOriginToVaryHeader
+  } = require_vary();
+  var defaultOptions = {
+    origin: "*",
+    methods: "GET,HEAD,POST",
+    hook: "onRequest",
+    preflightContinue: false,
+    optionsSuccessStatus: 204,
+    credentials: false,
+    exposedHeaders: null,
+    allowedHeaders: null,
+    maxAge: null,
+    preflight: true,
+    strictPreflight: true
+  };
+  var validHooks = [
+    "onRequest",
+    "preParsing",
+    "preValidation",
+    "preHandler",
+    "preSerialization",
+    "onSend"
+  ];
+  var hookWithPayload = [
+    "preSerialization",
+    "preParsing",
+    "onSend"
+  ];
+  function validateHook(value, next) {
+    if (validHooks.indexOf(value) !== -1) {
+      return;
+    }
+    next(new TypeError("@fastify/cors: Invalid hook option provided."));
+  }
+  function fastifyCors(fastify, opts, next) {
+    fastify.decorateRequest("corsPreflightEnabled", false);
+    let hideOptionsRoute = true;
+    if (typeof opts === "function") {
+      handleCorsOptionsDelegator(opts, fastify, { hook: defaultOptions.hook }, next);
+    } else if (opts.delegator) {
+      const { delegator, ...options } = opts;
+      handleCorsOptionsDelegator(delegator, fastify, options, next);
+    } else {
+      if (opts.hideOptionsRoute !== undefined)
+        hideOptionsRoute = opts.hideOptionsRoute;
+      const corsOptions = normalizeCorsOptions(opts);
+      validateHook(corsOptions.hook, next);
+      if (hookWithPayload.indexOf(corsOptions.hook) !== -1) {
+        fastify.addHook(corsOptions.hook, function handleCors(req, reply, _payload, next2) {
+          addCorsHeadersHandler(fastify, corsOptions, req, reply, next2);
+        });
+      } else {
+        fastify.addHook(corsOptions.hook, function handleCors(req, reply, next2) {
+          addCorsHeadersHandler(fastify, corsOptions, req, reply, next2);
+        });
+      }
+    }
+    fastify.options("*", { schema: { hide: hideOptionsRoute } }, (req, reply) => {
+      if (!req.corsPreflightEnabled) {
+        reply.callNotFound();
+        return;
+      }
+      reply.send();
+    });
+    next();
+  }
+  function handleCorsOptionsDelegator(optionsResolver, fastify, opts, next) {
+    const hook = opts?.hook || defaultOptions.hook;
+    validateHook(hook, next);
+    if (optionsResolver.length === 2) {
+      if (hookWithPayload.indexOf(hook) !== -1) {
+        fastify.addHook(hook, function handleCors(req, reply, _payload, next2) {
+          handleCorsOptionsCallbackDelegator(optionsResolver, fastify, req, reply, next2);
+        });
+      } else {
+        fastify.addHook(hook, function handleCors(req, reply, next2) {
+          handleCorsOptionsCallbackDelegator(optionsResolver, fastify, req, reply, next2);
+        });
+      }
+    } else {
+      if (hookWithPayload.indexOf(hook) !== -1) {
+        fastify.addHook(hook, function handleCors(req, reply, _payload, next2) {
+          const ret = optionsResolver(req);
+          if (ret && typeof ret.then === "function") {
+            ret.then((options) => addCorsHeadersHandler(fastify, normalizeCorsOptions(options, true), req, reply, next2)).catch(next2);
+            return;
+          }
+          next2(new Error("Invalid CORS origin option"));
+        });
+      } else {
+        fastify.addHook(hook, function handleCors(req, reply, next2) {
+          const ret = optionsResolver(req);
+          if (ret && typeof ret.then === "function") {
+            ret.then((options) => addCorsHeadersHandler(fastify, normalizeCorsOptions(options, true), req, reply, next2)).catch(next2);
+            return;
+          }
+          next2(new Error("Invalid CORS origin option"));
+        });
+      }
+    }
+  }
+  function handleCorsOptionsCallbackDelegator(optionsResolver, fastify, req, reply, next) {
+    optionsResolver(req, (err, options) => {
+      if (err) {
+        next(err);
+      } else {
+        addCorsHeadersHandler(fastify, normalizeCorsOptions(options, true), req, reply, next);
+      }
+    });
+  }
+  function normalizeCorsOptions(opts, dynamic) {
+    const corsOptions = { ...defaultOptions, ...opts };
+    if (Array.isArray(opts.origin) && opts.origin.indexOf("*") !== -1) {
+      corsOptions.origin = "*";
+    }
+    if (Number.isInteger(corsOptions.cacheControl)) {
+      corsOptions.cacheControl = `max-age=${corsOptions.cacheControl}`;
+    } else if (typeof corsOptions.cacheControl !== "string") {
+      corsOptions.cacheControl = null;
+    }
+    corsOptions.dynamic = dynamic || false;
+    return corsOptions;
+  }
+  function addCorsHeadersHandler(fastify, options, req, reply, next) {
+    if (typeof options.origin !== "string" && options.origin !== false || options.dynamic) {
+      addOriginToVaryHeader(reply);
+    }
+    const resolveOriginOption = typeof options.origin === "function" ? resolveOriginWrapper(fastify, options.origin) : (_, cb) => cb(null, options.origin);
+    resolveOriginOption(req, (error, resolvedOriginOption) => {
+      if (error !== null) {
+        return next(error);
+      }
+      if (resolvedOriginOption === false) {
+        return next();
+      }
+      if (req.routeOptions.config?.cors === false) {
+        return next();
+      }
+      if (!resolvedOriginOption) {
+        return next(new Error("Invalid CORS origin option"));
+      }
+      addCorsHeaders(req, reply, resolvedOriginOption, options);
+      if (req.raw.method === "OPTIONS" && options.preflight === true) {
+        if (options.strictPreflight === true && (!req.headers.origin || !req.headers["access-control-request-method"])) {
+          reply.status(400).type("text/plain").send("Invalid Preflight Request");
+          return;
+        }
+        req.corsPreflightEnabled = true;
+        addPreflightHeaders(req, reply, options);
+        if (!options.preflightContinue) {
+          reply.code(options.optionsSuccessStatus).header("Content-Length", "0").send();
+          return;
+        }
+      }
+      return next();
+    });
+  }
+  function addCorsHeaders(req, reply, originOption, corsOptions) {
+    const origin = getAccessControlAllowOriginHeader(req.headers.origin, originOption);
+    if (origin) {
+      reply.header("Access-Control-Allow-Origin", origin);
+    }
+    if (corsOptions.credentials) {
+      reply.header("Access-Control-Allow-Credentials", "true");
+    }
+    if (corsOptions.exposedHeaders !== null) {
+      reply.header("Access-Control-Expose-Headers", Array.isArray(corsOptions.exposedHeaders) ? corsOptions.exposedHeaders.join(", ") : corsOptions.exposedHeaders);
+    }
+  }
+  function addPreflightHeaders(req, reply, corsOptions) {
+    reply.header("Access-Control-Allow-Methods", Array.isArray(corsOptions.methods) ? corsOptions.methods.join(", ") : corsOptions.methods);
+    if (corsOptions.allowedHeaders === null) {
+      addAccessControlRequestHeadersToVaryHeader(reply);
+      const reqAllowedHeaders = req.headers["access-control-request-headers"];
+      if (reqAllowedHeaders !== undefined) {
+        reply.header("Access-Control-Allow-Headers", reqAllowedHeaders);
+      }
+    } else {
+      reply.header("Access-Control-Allow-Headers", Array.isArray(corsOptions.allowedHeaders) ? corsOptions.allowedHeaders.join(", ") : corsOptions.allowedHeaders);
+    }
+    if (corsOptions.maxAge !== null) {
+      reply.header("Access-Control-Max-Age", String(corsOptions.maxAge));
+    }
+    if (corsOptions.cacheControl) {
+      reply.header("Cache-Control", corsOptions.cacheControl);
+    }
+  }
+  function resolveOriginWrapper(fastify, origin) {
+    return function(req, cb) {
+      const result = origin.call(fastify, req.headers.origin, cb);
+      if (result && typeof result.then === "function") {
+        result.then((res) => cb(null, res), cb);
+      }
+    };
+  }
+  function getAccessControlAllowOriginHeader(reqOrigin, originOption) {
+    if (typeof originOption === "string") {
+      return originOption;
+    }
+    return isRequestOriginAllowed(reqOrigin, originOption) ? reqOrigin : false;
+  }
+  function isRequestOriginAllowed(reqOrigin, allowedOrigin) {
+    if (Array.isArray(allowedOrigin)) {
+      for (let i = 0;i < allowedOrigin.length; ++i) {
+        if (isRequestOriginAllowed(reqOrigin, allowedOrigin[i])) {
+          return true;
+        }
+      }
+      return false;
+    } else if (typeof allowedOrigin === "string") {
+      return reqOrigin === allowedOrigin;
+    } else if (allowedOrigin instanceof RegExp) {
+      allowedOrigin.lastIndex = 0;
+      return allowedOrigin.test(reqOrigin);
+    } else {
+      return !!allowedOrigin;
+    }
+  }
+  var _fastifyCors = fp(fastifyCors, {
+    fastify: "5.x",
+    name: "@fastify/cors"
+  });
+  module.exports = _fastifyCors;
+  module.exports.fastifyCors = _fastifyCors;
+  module.exports.default = _fastifyCors;
+});
+
 // node_modules/bonjour-service/dist/lib/utils/dns-equal.js
 var require_dns_equal = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
@@ -49285,6 +49594,7 @@ var require_dist6 = __commonJS((exports) => {
 var import_fastify = __toESM(require_fastify(), 1);
 var import__static = __toESM(require_static(), 1);
 var import_websocket = __toESM(require_websocket2(), 1);
+var import_cors = __toESM(require_cors(), 1);
 
 // src/constants/timer.constants.ts
 var TIMER_CONSTANTS = {
@@ -49341,16 +49651,81 @@ class TimerInstance {
     this.state = state;
     this.createdAt = createdAt ?? Date.now();
   }
-  setOnStateChangeCallback(callback) {
-    this.onStateChange = callback;
-  }
   notifyStateChange() {
     if (this.onStateChange) {
       this.onStateChange(this.timerId);
     }
   }
+  broadcast(message) {
+    const messageString = JSON.stringify(message);
+    this.subscribers.forEach((subscriber) => {
+      try {
+        subscriber.send(messageString);
+      } catch (e) {
+        console.error(`Error sending message to subscriber ${subscriber.id}`, e);
+        this.unsubscribe(subscriber.id);
+      }
+    });
+  }
+  broadcastTime() {
+    this.broadcast({
+      type: "timeUpdate",
+      time: this.currentTime,
+      state: this.state,
+      timerId: this.timerId
+    });
+  }
+  subscribe(subscriber) {
+    this.subscribers.set(subscriber.id, subscriber);
+    console.log(`[Timer ${this.timerId}] Client ${subscriber.id} subscribed. Total: ${this.subscribers.size}`);
+    subscriber.send(JSON.stringify({
+      type: "timeUpdate",
+      time: this.currentTime,
+      state: this.state,
+      timerId: this.timerId
+    }));
+  }
+  unsubscribe(subscriberId) {
+    this.subscribers.delete(subscriberId);
+    console.log(`[Timer ${this.timerId}] Client ${subscriberId} unsubscribed. Total: ${this.subscribers.size}`);
+  }
+  startCountdown(interval = TIMER_CONSTANTS.DEFAULT_INTERVAL) {
+    if (this.state === "running")
+      return;
+    if (this.currentTime <= 0) {
+      this.state = "completed";
+      this.broadcastTime();
+      this.notifyStateChange();
+      return;
+    }
+    this.state = "running";
+    this.broadcastTime();
+    this.notifyStateChange();
+    this.intervalId = setInterval(() => {
+      if (this.currentTime > 0) {
+        this.currentTime--;
+        this.broadcastTime();
+      } else {
+        this.state = "completed";
+        this.broadcast({ type: "timerEnd", message: "Timer finished!", timerId: this.timerId });
+        this.stopCountdown();
+      }
+    }, interval);
+  }
+  stopCountdown() {
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
+    }
+    if (this.state === "running") {
+      this.state = this.currentTime <= 0 ? "completed" : "stopped";
+      this.broadcastTime();
+      this.notifyStateChange();
+    }
+  }
   setTime(newTime) {
     TimerUtils.validateTime(newTime);
+    this.stopCountdown();
     this.currentTime = newTime;
     this.state = newTime === 0 ? "completed" : "stopped";
     this.broadcastTime();
@@ -49369,16 +49744,13 @@ class TimerInstance {
   }
   rest(seconds) {
     TimerUtils.validateSeconds(seconds, "rest");
-    if (this.currentTime - seconds < 0) {
-      this.currentTime = 0;
+    this.currentTime = Math.max(0, this.currentTime - seconds);
+    if (this.currentTime === 0) {
       this.state = "completed";
-      console.log(`Timer ${this.timerId} tried to rest ${seconds} seconds, but hit 0. Current time: ${this.currentTime} seconds`);
-    } else {
-      this.currentTime -= seconds;
-      console.log(TimerUtils.formatSecondsLog(seconds, "rested from", this.timerId, this.currentTime));
     }
     this.broadcastTime();
     this.notifyStateChange();
+    console.log(TimerUtils.formatSecondsLog(seconds, "rested from", this.timerId, this.currentTime));
   }
   getTime() {
     return this.currentTime;
@@ -49386,87 +49758,14 @@ class TimerInstance {
   getState() {
     return this.state;
   }
-  getCreatedAt() {
-    return this.createdAt;
-  }
   getInitialTime() {
     return this.initialTime;
   }
-  isExpired() {
-    return TimerUtils.isExpired(this.createdAt);
-  }
-  subscribe(ws) {
-    this.subscribers.set(ws.id, ws);
-    const message = {
-      type: "initialTime",
-      time: this.currentTime,
-      state: this.state,
-      timerId: this.timerId
-    };
-    ws.send(JSON.stringify(message));
-  }
-  unsubscribe(wsId) {
-    this.subscribers.delete(wsId);
-    if (this.subscribers.size === 0 && this.state === "running") {
-      this.stopCountdown();
-    }
-  }
-  broadcastTime() {
-    const message = {
-      type: "timeUpdate",
-      time: this.currentTime,
-      state: this.state,
-      timerId: this.timerId
-    };
-    this.subscribers.forEach((ws) => {
-      ws.send(JSON.stringify(message));
-    });
-  }
-  broadcastEnd() {
-    const message = {
-      type: "timerEnd",
-      message: "Timer finished!",
-      timerId: this.timerId
-    };
-    this.subscribers.forEach((ws) => {
-      ws.send(JSON.stringify(message));
-    });
-  }
-  startCountdown(interval = TIMER_CONSTANTS.DEFAULT_INTERVAL) {
-    if (this.currentTime <= 0) {
-      this.state = "completed";
-      this.notifyStateChange();
-      return;
-    }
-    if (this.intervalId) {
-      clearInterval(this.intervalId);
-    }
-    this.state = "running";
-    this.notifyStateChange();
-    this.intervalId = setInterval(() => {
-      if (this.currentTime > 0) {
-        this.currentTime--;
-        this.broadcastTime();
-        this.notifyStateChange();
-      } else {
-        this.state = "completed";
-        this.broadcastEnd();
-        this.stopCountdown();
-      }
-    }, interval);
-  }
-  stopCountdown() {
-    if (this.intervalId) {
-      clearInterval(this.intervalId);
-      this.intervalId = null;
-    }
-    if (this.state === "running") {
-      this.state = this.currentTime <= 0 ? "completed" : "stopped";
-      this.notifyStateChange();
-    }
-  }
   hasSubscribers() {
     return this.subscribers.size > 0;
+  }
+  isExpired() {
+    return TimerUtils.isExpired(this.createdAt);
   }
   toJSON() {
     return {
@@ -49558,9 +49857,6 @@ class TimerManager {
     for (const [key, timerData] of Object.entries(storage.timers)) {
       if (Date.now() < timerData.expiresAt) {
         const timer = new TimerInstance(timerData.timerId, timerData.initialTime, timerData.currentTime, timerData.state, timerData.createdAt);
-        timer.setOnStateChangeCallback((timerId) => {
-          this.scheduleNextSave();
-        });
         if (timerData.state === "running") {
           timer.stopCountdown();
         }
@@ -49609,9 +49905,6 @@ class TimerManager {
     if (!this.timers.has(timerId)) {
       console.log(`Creating new timer instance with ID: ${timerId}`);
       const timer = new TimerInstance(timerId, initialTime);
-      timer.setOnStateChangeCallback((id) => {
-        this.scheduleNextSave();
-      });
       this.timers.set(timerId, timer);
       if (timerId !== this.defaultTimerId) {
         this.scheduleNextSave();
@@ -50177,123 +50470,90 @@ var p2pRoutes = async (fastify) => {
 
 // src/ws.ts
 var createWsTimerRoutes = async (fastify) => {
-  const generateId = () => Math.random().toString(36).substr(2, 9);
-  fastify.get("/ws", { websocket: true }, (connection, req) => {
-    handleWebSocketConnection(connection, req, 0, timerManager);
-  });
-  fastify.get("/ws/:timerId", { websocket: true }, (connection, req) => {
+  const getTimerIdFromRequest = (req) => {
     const { timerId: rawTimerId } = req.params;
-    const timerId = rawTimerId === undefined || rawTimerId === "" ? 0 : isNaN(Number(rawTimerId)) ? rawTimerId : Number(rawTimerId);
-    handleWebSocketConnection(connection, req, timerId, timerManager);
-  });
-};
-function handleWebSocketConnection(connection, req, timerId, timerManager2) {
-  const ws = {
-    id: Math.random().toString(36).substr(2, 9),
-    timerId,
-    socket: connection.socket
-  };
-  console.log(`WebSocket connection opened: ${ws.id} for timerId: ${timerId}`);
-  const timer = timerManager2.getOrCreateTimer(timerId);
-  timer.subscribe(ws.socket);
-  timer.startCountdown();
-  connection.socket.on("message", (data) => {
-    console.log(`Received message from ${ws.id} for timerId ${timerId}:`, data.toString());
-    const timer2 = timerManager2.getTimer(timerId);
-    if (!timer2) {
-      connection.socket.send(JSON.stringify({
-        type: "error",
-        message: `Timer with ID ${timerId} not found.`
-      }));
-      return;
+    if (rawTimerId === undefined || rawTimerId === "") {
+      return 0;
     }
+    return isNaN(Number(rawTimerId)) ? rawTimerId : Number(rawTimerId);
+  };
+  const handler = {
+    websocket: true,
+    handler: (connection, req) => {
+      const timerId = getTimerIdFromRequest(req);
+      handleWebSocketConnection(connection, timerId);
+    }
+  };
+  fastify.get("/ws", handler);
+  fastify.get("/ws/:timerId", handler);
+};
+function handleWebSocketConnection(connection, timerId) {
+  console.log(`\uD83D\uDD0C New WebSocket connection request for timerId: ${timerId}`);
+  const timer = timerManager.getOrCreateTimer(timerId);
+  const subscriber = {
+    id: Math.random().toString(36).substr(2, 9),
+    send: (data) => {
+      if (connection.readyState === 1) {
+        connection.send(data);
+      }
+    }
+  };
+  console.log(`✅ WebSocket connection established: ${subscriber.id} for timer ${timerId}`);
+  timer.subscribe(subscriber);
+  connection.on("message", (data) => {
+    const rawMessage = data.toString();
+    console.log(`[Timer ${timerId}] \uD83D\uDCE8 Msg from ${subscriber.id}: ${rawMessage}`);
     try {
-      const message = JSON.parse(data.toString());
-      if (message && typeof message === "object") {
-        const { action, value } = message;
-        switch (action) {
-          case "setTime":
-            if (typeof value === "number") {
-              timer2.setTime(value);
-              timer2.startCountdown();
-            } else {
-              connection.socket.send(JSON.stringify({
-                type: "error",
-                message: "Invalid value for setTime"
-              }));
-            }
-            break;
-          case "addTime":
-            if (typeof value === "number") {
-              timer2.add(value);
-              timer2.startCountdown();
-            } else {
-              connection.socket.send(JSON.stringify({
-                type: "error",
-                message: "Invalid value for addTime"
-              }));
-            }
-            break;
-          case "restTime":
-            if (typeof value === "number") {
-              timer2.rest(value);
-              timer2.startCountdown();
-            } else {
-              connection.socket.send(JSON.stringify({
-                type: "error",
-                message: "Invalid value for restTime"
-              }));
-            }
-            break;
-          case "getTime":
-            connection.socket.send(JSON.stringify({
-              type: "timeUpdate",
-              time: timer2.getTime()
-            }));
-            break;
-          case "start":
-            timer2.startCountdown();
-            connection.socket.send(JSON.stringify({
-              type: "status",
-              message: `Timer ${timerId} started/resumed`
-            }));
-            break;
-          case "stop":
-            timer2.stopCountdown();
-            connection.socket.send(JSON.stringify({
-              type: "status",
-              message: `Timer ${timerId} stopped`
-            }));
-            break;
-          default:
-            connection.socket.send(JSON.stringify({
-              type: "error",
-              message: "Unknown action"
-            }));
-        }
-      } else {
-        connection.socket.send(JSON.stringify({
-          type: "error",
-          message: "Invalid message format"
-        }));
+      const message = JSON.parse(rawMessage);
+      const { action, value } = message;
+      const currentTimer = timerManager.getTimer(timerId);
+      if (!currentTimer) {
+        subscriber.send(JSON.stringify({ type: "error", message: `Timer ${timerId} not found.` }));
+        connection.close();
+        return;
+      }
+      switch (action) {
+        case "start":
+          currentTimer.startCountdown();
+          break;
+        case "stop":
+          currentTimer.stopCountdown();
+          break;
+        case "setTime":
+          if (typeof value === "number")
+            currentTimer.setTime(value);
+          break;
+        case "addTime":
+          if (typeof value === "number")
+            currentTimer.add(value);
+          break;
+        case "restTime":
+          if (typeof value === "number")
+            currentTimer.rest(value);
+          break;
+        case "getTime":
+          subscriber.send(JSON.stringify({
+            type: "timeUpdate",
+            time: currentTimer.getTime(),
+            state: currentTimer.getState(),
+            timerId
+          }));
+          break;
+        default:
+          subscriber.send(JSON.stringify({ type: "error", message: `Unknown action: ${action}` }));
       }
     } catch (error) {
-      console.error(`Error processing WebSocket message for timerId ${timerId}:`, error);
-      connection.socket.send(JSON.stringify({
-        type: "error",
-        message: "Error processing message"
-      }));
+      console.error(`❌ Error processing message from ${subscriber.id}:`, error);
+      subscriber.send(JSON.stringify({ type: "error", message: "Invalid JSON message format" }));
     }
   });
-  connection.socket.on("close", () => {
-    console.log(`WebSocket connection closed: ${ws.id} for timerId: ${timerId}`);
-    const timer2 = timerManager2.getTimer(timerId);
-    if (timer2) {
-      timer2.unsubscribe(ws.id);
-    }
+  connection.on("close", () => {
+    console.log(`\uD83D\uDD0C WebSocket connection closed: ${subscriber.id}`);
+    timer.unsubscribe(subscriber.id);
   });
-  connection.socket.on("error", (error) => {
-    console.error(`WebSocket error for ${ws.id}:`, error);
+  connection.on("error", (error) => {
+    console.error(`❌ WebSocket error on connection ${subscriber.id}:`, error);
+    timer.unsubscribe(subscriber.id);
   });
 }
 
@@ -50307,6 +50567,9 @@ var fastify = import_fastify.default({
 });
 async function buildServer() {
   try {
+    await fastify.register(import_cors.default, {
+      origin: true
+    });
     await fastify.register(import_websocket.default);
     await fastify.register(import__static.default, {
       root: path2.join(__dirname2, "..", "public"),

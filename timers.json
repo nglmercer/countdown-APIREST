@@ -3,13 +3,13 @@
   "timers": {
     "1": {
       "timerId": 1,
-      "currentTime": 116316,
+      "currentTime": 116072,
       "initialTime": 60,
-      "state": "running",
+      "state": "stopped",
       "createdAt": 1749443916089,
       "expiresAt": 1749530316089,
-      "lastSaved": 1749499102029
+      "lastSaved": 1749499347068
     }
   },
-  "lastCleanup": 1749499102029
+  "lastCleanup": 1749499347069
 }
