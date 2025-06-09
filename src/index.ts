@@ -2,6 +2,7 @@
 import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import fastifyWebsocket from '@fastify/websocket';
+import fastifyCors from '@fastify/cors';
 import { timerManager } from './core/timer-manager';
 import { timerRoutes } from './http';
 import { p2pRoutes } from './tcprouter';
@@ -21,21 +22,23 @@ const fastify = Fastify({
 
 async function buildServer() {
   try {
-    // Register WebSocket support
-    await fastify.register(fastifyWebsocket);
-    
-    // Register static files plugin
-    await fastify.register(fastifyStatic, {
-      root: path.join(__dirname, 'public'),
-      prefix: '/', // optional: default '/'
+    // ✅ Permitir todos los orígenes (CORS abierto)
+    await fastify.register(fastifyCors, {
+      origin: true
     });
 
-    // Register HTTP timer routes
+    // WebSocket
+    await fastify.register(fastifyWebsocket);
+    
+    // Static files
+    await fastify.register(fastifyStatic, {
+      root: path.join(__dirname, '..', 'public'),
+      prefix: '/',
+    });
+
+    // Rutas
     await fastify.register(timerRoutes);
-
     await fastify.register(p2pRoutes);
-
-    // Register WebSocket routes
     await fastify.register(createWsTimerRoutes);
 
     return fastify;

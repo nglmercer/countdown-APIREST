@@ -50309,7 +50309,7 @@ async function buildServer() {
   try {
     await fastify.register(import_websocket.default);
     await fastify.register(import__static.default, {
-      root: path2.join(__dirname2, "public"),
+      root: path2.join(__dirname2, "..", "public"),
       prefix: "/"
     });
     await fastify.register(timerRoutes);
