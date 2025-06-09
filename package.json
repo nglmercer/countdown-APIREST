@@ -1,0 +1,17 @@
+{
+  "name": "elysia-timer-widget",
+  "version": "1.0.0",
+  "description": "A timer widget API built with ElysiaJS and Bun",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "bun run --hot src/index.ts",
+    "start": "bun src/index.ts"
+  },
+  "dependencies": {
+    "elysia": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "module": "src/index.js"
+}
