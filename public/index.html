@@ -1,157 +1,17 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Timer Widget</title>
-    <link rel="stylesheet" href="./styles.css">
-</head>
-<body>
-    <h1>Timer Widget (WebSocket)</h1>
-    <div id="timerDisplay">00:00</div>
-    <div class="controls">
-        <input type="number" id="timeInput" placeholder="Seconds" min="0">
-        <button id="setTimeBtn">Set Time</button>
-        <button id="add5Btn">+5s</button>
-        <button id="rest5Btn">-5s</button>
-        <button id="startBtn">Start</button>
-        <button id="stopBtn">Stop</button>
-        <button id="getTimeBtn">Get Time</button>
-    </div>
-    <div id="status">Connecting to WebSocket...</div>
-
-    <script>
-        const timerDisplay = document.getElementById('timerDisplay');
-        const timeInput = document.getElementById('timeInput');
-        const setTimeBtn = document.getElementById('setTimeBtn');
-        const add5Btn = document.getElementById('add5Btn');
-        const rest5Btn = document.getElementById('rest5Btn');
-        const startBtn = document.getElementById('startBtn');
-        const stopBtn = document.getElementById('stopBtn');
-        const getTimeBtn = document.getElementById('getTimeBtn');
-        const statusDiv = document.getElementById('status');
-
-        let ws;
-        let currentTimerId = 1; // Default timer ID
-
-        const timerIdInput = document.createElement('input');
-        timerIdInput.type = 'text';
-        timerIdInput.id = 'timerIdInput';
-        timerIdInput.placeholder = 'Timer ID (default 0)';
-        timerIdInput.style.margin = '5px';
-        timerIdInput.style.padding = '10px';
-        timerIdInput.style.fontSize = '1em';
-        timerIdInput.style.borderRadius = '5px';
-        timerIdInput.style.border = '1px solid #ccc';
-
-        const connectBtn = document.createElement('button');
-        connectBtn.id = 'connectBtn';
-        connectBtn.textContent = 'Connect to Timer ID';
-        connectBtn.style.margin = '5px';
-
-        const controlsDiv = document.querySelector('.controls');
-        controlsDiv.parentNode.insertBefore(timerIdInput, controlsDiv);
-        controlsDiv.parentNode.insertBefore(connectBtn, controlsDiv);
-
-
-        function formatTime(totalSeconds) {
-            if (typeof totalSeconds !== 'number' || isNaN(totalSeconds) || totalSeconds < 0) {
-                return '00:00'; // Default or error display
-            }
-            const minutes = Math.floor(totalSeconds / 60);
-            const seconds = totalSeconds % 60;
-            return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-        }
-
-        function connectWebSocket(timerId = 1) {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.close();
-            }
-            currentTimerId = timerId;
-            const wsUrl = `ws://localhost:3000/ws/${timerId}`;
-            ws = new WebSocket(wsUrl);
-            statusDiv.textContent = `Connecting to timer ${timerId} at ${wsUrl}...`;
-
-            ws.onopen = () => {
-                statusDiv.textContent = `Connected to Timer ID: ${currentTimerId}!`;
-                console.log(`WebSocket connection established for timer ID: ${currentTimerId}`);
-                // The server now sends initialTime upon subscription in TimerInstance
-            };
-
-            ws.onmessage = (event) => {
-                try {
-                    const data = JSON.parse(event.data);
-                    console.log('Message from server: ', data);
-                    if (data.type === 'timeUpdate' || data.type === 'initialTime') {
-                        timerDisplay.textContent = formatTime(data.time);
-                    } else if (data.type === 'timerEnd') {
-                        timerDisplay.textContent = formatTime(0);
-                        statusDiv.textContent = data.message;
-                    } else if (data.type === 'status') {
-                        statusDiv.textContent = data.message;
-                    } else if (data.type === 'error') {
-                        statusDiv.textContent = `Error: ${data.message}`;
-                        console.error('Error from server:', data.message);
-                    }
-                } catch (e) {
-                    console.error('Error parsing message from server:', e);
-                    statusDiv.textContent = 'Error processing server message.';
-                }
-            };
-
-            ws.onclose = () => {
-                statusDiv.textContent = 'WebSocket connection closed. Attempting to reconnect...';
-                console.log('WebSocket connection closed');
-                // Optional: attempt to reconnect after a delay
-                setTimeout(connectWebSocket, 3000);
-            };
-
-            ws.onerror = (error) => {
-                statusDiv.textContent = 'WebSocket error. Check console.';
-                console.error('WebSocket error: ', error);
-            };
-        }
-
-        setTimeBtn.onclick = () => {
-            const seconds = parseInt(timeInput.value);
-            if (!isNaN(seconds) && seconds >= 0) {
-                ws.send(JSON.stringify({ action: 'setTime', value: seconds }));
-                timeInput.value = '';
-            } else {
-                statusDiv.textContent = 'Please enter a valid non-negative number for time.';
-            }
-        };
-
-        add5Btn.onclick = () => {
-            ws.send(JSON.stringify({ action: 'addTime', value: 5 }));
-        };
-
-        rest5Btn.onclick = () => {
-            ws.send(JSON.stringify({ action: 'restTime', value: 5 }));
-        };
-
-        startBtn.onclick = () => {
-            ws.send(JSON.stringify({ action: 'start' }));
-        };
-
-        stopBtn.onclick = () => {
-            ws.send(JSON.stringify({ action: 'stop' }));
-        };
-        
-        getTimeBtn.onclick = () => {
-            ws.send(JSON.stringify({ action: 'getTime' }));
-        };
-
-        // Initial connection
-        connectBtn.onclick = () => {
-            const newTimerId = timerIdInput.value.trim();
-            // Use 0 if input is empty, otherwise parse as number if possible, else use as string
-            const idToConnect = newTimerId === '' ? 0 : (isNaN(Number(newTimerId)) ? newTimerId : Number(newTimerId));
-            connectWebSocket(idToConnect);
-        };
-
-        // Initial connection to default timer
-        connectWebSocket(currentTimerId);
-    </script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Timer Widget - SolidJS</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script type="module" crossorigin src="/assets/index-BARTH8Hh.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-2SfCvzoB.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
 </html>
