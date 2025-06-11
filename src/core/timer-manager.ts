@@ -118,6 +118,7 @@ export class TimerManager {
   getOrCreateTimer(timerId: string | number, initialTime: number = TIMER_CONSTANTS.DEFAULT_INITIAL_TIME): TimerInstance {
     if (!this.timers.has(timerId)) {
       console.log(`Creating new timer instance with ID: ${timerId}`);
+      console.log(`Creating new timer`,this.timers);
       const timer = new TimerInstance(timerId, initialTime);
       
       this.timers.set(timerId, timer);
@@ -127,7 +128,11 @@ export class TimerManager {
         this.scheduleNextSave();
       }
     }
-    return this.timers.get(timerId)!;
+    const response = this.timers.get(`${timerId}`);
+    console.log("getOrCreateTimer",response)
+    console.log("typeof",typeof `${timerId}`)
+    if (response)return response;
+    return response!;
   }
 
   getTimer(timerId: string | number = this.defaultTimerId): TimerInstance | undefined {
@@ -191,4 +196,3 @@ export class TimerManager {
     }
   }
 }
-export const timerManager = new TimerManager();

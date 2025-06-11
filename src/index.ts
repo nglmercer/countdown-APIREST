@@ -3,11 +3,11 @@ import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import fastifyWebsocket from '@fastify/websocket';
 import fastifyCors from '@fastify/cors';
-import { timerManager } from './core/timer-manager';
-import { timerRoutes } from './http';
 import { p2pRoutes } from './tcprouter';
-import { createWsTimerRoutes } from './ws';
 import { P2PService,p2pserver } from './p2p/p2pService';
+import { TimerManager  } from './core/timer-manager';
+import { createTimerRoutes } from './http'; // Asumiendo que moviste este archivo
+import { createWsTimerRoutes } from './ws';
 import { API_PORT } from './config';
 import { fileURLToPath } from 'url';
 import path from 'path';
@@ -37,9 +37,16 @@ async function buildServer() {
     });
 
     // Rutas
-    await fastify.register(timerRoutes);
+    const timerManager = new TimerManager();
+
+    // 3. Crea los plugins de rutas "inyectando" la instancia del manager
+    const httpRoutes = createTimerRoutes(timerManager);
+    const wsRoutes = createWsTimerRoutes(timerManager);
+
+    // 4. Registra los plugins en Fastify
+    await fastify.register(httpRoutes);
+    await fastify.register(wsRoutes);
     await fastify.register(p2pRoutes);
-    await fastify.register(createWsTimerRoutes);
 
     return fastify;
   } catch (err) {

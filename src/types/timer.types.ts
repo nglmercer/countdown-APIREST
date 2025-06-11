@@ -32,9 +32,11 @@ export interface WebSocketLike {
   }
   
   export interface WebSocketMessage {
-    type: 'initialTime' | 'timeUpdate' | 'timerEnd';
+    type: 'initialTime' | 'timeUpdate' | 'timerEnd' | 'stateChange';
     time?: number;
     state?: TimerState;
     timerId?: string | number;
     message?: string;
+    timestamp?: string | number;
+    source?: 'websocket' | 'http';
   }

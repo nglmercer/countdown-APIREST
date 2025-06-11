@@ -49596,487 +49596,6 @@ var import__static = __toESM(require_static(), 1);
 var import_websocket = __toESM(require_websocket2(), 1);
 var import_cors = __toESM(require_cors(), 1);
 
-// src/constants/timer.constants.ts
-var TIMER_CONSTANTS = {
-  DEFAULT_INITIAL_TIME: 60,
-  DEFAULT_INTERVAL: 1000,
-  ONE_DAY_MS: 24 * 60 * 60 * 1000,
-  AUTO_SAVE_INTERVAL: 30000,
-  DELAYED_SAVE_TIMEOUT: 5000,
-  DEFAULT_TIMER_ID: 0,
-  STORAGE_VERSION: "1.0",
-  DEFAULT_STORAGE_FILE: "./timers.json"
-};
-
-// src/utils/timer.utils.ts
-class TimerUtils {
-  static validateTime(time) {
-    if (time < 0) {
-      throw new Error("Time cannot be negative.");
-    }
-  }
-  static validateSeconds(seconds, operation) {
-    if (seconds < 0) {
-      throw new Error(`Cannot ${operation} negative seconds.`);
-    }
-  }
-  static isExpired(createdAt) {
-    return Date.now() - createdAt > TIMER_CONSTANTS.ONE_DAY_MS;
-  }
-  static calculateExpirationTime(createdAt) {
-    return createdAt + TIMER_CONSTANTS.ONE_DAY_MS;
-  }
-  static formatTimerLog(timerId, action, currentTime) {
-    return `Timer ${timerId} ${action}: ${currentTime} seconds`;
-  }
-  static formatSecondsLog(seconds, action, timerId, currentTime) {
-    return `${seconds} seconds ${action} timer ${timerId}. Current time: ${currentTime} seconds`;
-  }
-}
-
-// src/core/timer-instance.ts
-class TimerInstance {
-  currentTime;
-  initialTime;
-  intervalId = null;
-  subscribers = new Map;
-  state = "stopped";
-  timerId;
-  createdAt;
-  onStateChange;
-  constructor(timerId, initialTime = TIMER_CONSTANTS.DEFAULT_INITIAL_TIME, currentTime, state = "stopped", createdAt) {
-    this.timerId = timerId;
-    this.initialTime = initialTime;
-    this.currentTime = currentTime ?? initialTime;
-    this.state = state;
-    this.createdAt = createdAt ?? Date.now();
-  }
-  notifyStateChange() {
-    if (this.onStateChange) {
-      this.onStateChange(this.timerId);
-    }
-  }
-  broadcast(message) {
-    const messageString = JSON.stringify(message);
-    this.subscribers.forEach((subscriber) => {
-      try {
-        subscriber.send(messageString);
-      } catch (e) {
-        console.error(`Error sending message to subscriber for timer ${this.timerId}`, e);
-        this.unsubscribe(subscriber.id);
-      }
-    });
-  }
-  broadcastTime() {
-    this.broadcast({
-      type: "timeUpdate",
-      time: this.currentTime,
-      state: this.state,
-      timerId: this.timerId
-    });
-  }
-  subscribe(subscriber) {
-    this.subscribers.set(subscriber.id, subscriber);
-    console.log(`[Timer ${this.timerId}] Client subscribed. Total: ${this.subscribers.size}`);
-    subscriber.send(JSON.stringify({
-      type: "timeUpdate",
-      time: this.currentTime,
-      state: this.state,
-      timerId: this.timerId
-    }));
-  }
-  unsubscribe(subscriberId) {
-    this.subscribers.delete(subscriberId);
-    console.log(`[Timer ${this.timerId}] Client ${subscriberId} unsubscribed. Total: ${this.subscribers.size}`);
-  }
-  startCountdown(interval = TIMER_CONSTANTS.DEFAULT_INTERVAL) {
-    if (this.state === "running")
-      return;
-    if (this.currentTime <= 0) {
-      this.state = "completed";
-      this.broadcastTime();
-      this.notifyStateChange();
-      return;
-    }
-    this.state = "running";
-    this.broadcastTime();
-    this.notifyStateChange();
-    this.intervalId = setInterval(() => {
-      if (this.currentTime > 0) {
-        this.currentTime--;
-        this.broadcastTime();
-      } else {
-        this.state = "completed";
-        this.broadcast({ type: "timerEnd", message: "Timer finished!", timerId: this.timerId });
-        this.stopCountdown();
-      }
-    }, interval);
-  }
-  stopCountdown() {
-    if (this.intervalId) {
-      clearInterval(this.intervalId);
-      this.intervalId = null;
-    }
-    if (this.state === "running") {
-      this.state = this.currentTime <= 0 ? "completed" : "stopped";
-      this.broadcastTime();
-      this.notifyStateChange();
-    }
-  }
-  setTime(newTime) {
-    TimerUtils.validateTime(newTime);
-    this.stopCountdown();
-    this.currentTime = newTime;
-    this.initialTime = newTime;
-    this.state = newTime === 0 ? "completed" : "stopped";
-    this.broadcastTime();
-    this.notifyStateChange();
-    console.log(TimerUtils.formatTimerLog(this.timerId, "set to", this.currentTime));
-  }
-  add(seconds) {
-    TimerUtils.validateSeconds(seconds, "add");
-    this.currentTime += seconds;
-    if (this.state === "completed" && this.currentTime > 0) {
-      this.state = "stopped";
-    }
-    this.broadcastTime();
-    this.notifyStateChange();
-    console.log(TimerUtils.formatSecondsLog(seconds, "added to", this.timerId, this.currentTime));
-  }
-  subtract(seconds) {
-    TimerUtils.validateSeconds(seconds, "subtract");
-    this.currentTime = Math.max(0, this.currentTime - seconds);
-    if (this.currentTime === 0) {
-      this.state = "completed";
-    }
-    this.broadcastTime();
-    this.notifyStateChange();
-    console.log(TimerUtils.formatSecondsLog(seconds, "subtracted from", this.timerId, this.currentTime));
-  }
-  reset() {
-    this.stopCountdown();
-    this.currentTime = this.initialTime;
-    this.state = this.currentTime === 0 ? "completed" : "stopped";
-    this.broadcastTime();
-    this.notifyStateChange();
-    console.log(TimerUtils.formatTimerLog(this.timerId, "reset to initial time", this.currentTime));
-  }
-  multiply(factor) {
-    if (typeof factor !== "number" || factor < 0) {
-      throw new Error("Factor must be a non-negative number.");
-    }
-    this.currentTime = Math.round(this.currentTime * factor);
-    if (this.state === "completed" && this.currentTime > 0) {
-      this.state = "stopped";
-    }
-    this.broadcastTime();
-    this.notifyStateChange();
-    console.log(`[Timer ${this.timerId}] Time multiplied by ${factor}. New time: ${this.currentTime}`);
-  }
-  divide(divisor) {
-    if (typeof divisor !== "number" || divisor <= 0) {
-      throw new Error("Divisor must be a positive number greater than zero.");
-    }
-    this.currentTime = Math.round(this.currentTime / divisor);
-    if (this.currentTime === 0 && this.state !== "completed") {
-      this.state = "completed";
-    }
-    this.broadcastTime();
-    this.notifyStateChange();
-    console.log(`[Timer ${this.timerId}] Time divided by ${divisor}. New time: ${this.currentTime}`);
-  }
-  getTime() {
-    return this.currentTime;
-  }
-  getState() {
-    return this.state;
-  }
-  getInitialTime() {
-    return this.initialTime;
-  }
-  hasSubscribers() {
-    return this.subscribers.size > 0;
-  }
-  isExpired() {
-    return TimerUtils.isExpired(this.createdAt);
-  }
-  getStatus() {
-    return {
-      timerId: this.timerId,
-      currentTime: this.currentTime,
-      initialTime: this.initialTime,
-      state: this.state,
-      createdAt: new Date(this.createdAt).toISOString()
-    };
-  }
-  toJSON() {
-    return {
-      timerId: this.timerId,
-      currentTime: this.currentTime,
-      initialTime: this.initialTime,
-      state: this.state,
-      createdAt: this.createdAt,
-      expiresAt: TimerUtils.calculateExpirationTime(this.createdAt),
-      lastSaved: Date.now()
-    };
-  }
-}
-
-// src/services/storage.service.ts
-import { writeFile, readFile, existsSync } from "fs";
-import { promisify } from "util";
-var writeFileAsync = promisify(writeFile);
-var readFileAsync = promisify(readFile);
-
-class StorageService {
-  storageFile;
-  constructor(storageFile = TIMER_CONSTANTS.DEFAULT_STORAGE_FILE) {
-    this.storageFile = storageFile;
-  }
-  async loadTimers() {
-    try {
-      if (!existsSync(this.storageFile)) {
-        console.log("Timer storage file does not exist, starting fresh");
-        return null;
-      }
-      const fileContent = await readFileAsync(this.storageFile, "utf8");
-      const storage = JSON.parse(fileContent);
-      console.log(`Loaded storage from ${this.storageFile}`);
-      return storage;
-    } catch (error) {
-      console.error("Error loading timers from file:", error);
-      throw error;
-    }
-  }
-  async saveTimers(timersData) {
-    try {
-      const storage = {
-        version: TIMER_CONSTANTS.STORAGE_VERSION,
-        timers: timersData,
-        lastCleanup: Date.now()
-      };
-      await writeFileAsync(this.storageFile, JSON.stringify(storage, null, 2));
-      console.log(`Saved ${Object.keys(storage.timers).length} timers to storage`, storage);
-    } catch (error) {
-      console.error("Error saving timers to file:", error);
-    }
-  }
-  getStorageFile() {
-    return this.storageFile;
-  }
-}
-
-// src/core/timer-manager.ts
-class TimerManager {
-  timers = new Map;
-  defaultTimerId = TIMER_CONSTANTS.DEFAULT_TIMER_ID;
-  saveInterval = null;
-  storageService;
-  constructor(defaultInitialTime = TIMER_CONSTANTS.DEFAULT_INITIAL_TIME, storageFile) {
-    this.storageService = new StorageService(storageFile);
-    this.initializeManager(defaultInitialTime);
-  }
-  async initializeManager(defaultInitialTime) {
-    try {
-      await this.loadFromFile();
-      if (!this.timers.has(this.defaultTimerId)) {
-        this.getOrCreateTimer(this.defaultTimerId, defaultInitialTime);
-      }
-      this.cleanupExpiredTimers();
-      this.startAutoSave();
-    } catch (error) {
-      console.error("Error initializing timer manager:", error);
-      this.getOrCreateTimer(this.defaultTimerId, defaultInitialTime);
-      this.startAutoSave();
-    }
-  }
-  async loadFromFile() {
-    const storage = await this.storageService.loadTimers();
-    if (!storage) {
-      return;
-    }
-    let loadedCount = 0;
-    for (const [key, timerData] of Object.entries(storage.timers)) {
-      if (Date.now() < timerData.expiresAt) {
-        const timer = new TimerInstance(timerData.timerId, timerData.initialTime, timerData.currentTime, timerData.state, timerData.createdAt);
-        if (timerData.state === "running") {
-          timer.stopCountdown();
-        }
-        this.timers.set(timerData.timerId, timer);
-        loadedCount++;
-      }
-    }
-    console.log(`Loaded ${loadedCount} timers from storage`);
-  }
-  async saveToFile() {
-    const timersData = {};
-    for (const [timerId, timer] of this.timers.entries()) {
-      if (timerId !== this.defaultTimerId && !timer.isExpired()) {
-        timersData[timerId.toString()] = timer.toJSON();
-      }
-    }
-    await this.storageService.saveTimers(timersData);
-  }
-  startAutoSave() {
-    this.saveInterval = setInterval(() => {
-      this.saveToFile();
-    }, TIMER_CONSTANTS.AUTO_SAVE_INTERVAL);
-  }
-  scheduleNextSave() {
-    setTimeout(() => {
-      this.saveToFile();
-    }, TIMER_CONSTANTS.DELAYED_SAVE_TIMEOUT);
-  }
-  cleanupExpiredTimers() {
-    const expiredTimers = [];
-    for (const [timerId, timer] of this.timers.entries()) {
-      if (timerId !== this.defaultTimerId && timer.isExpired()) {
-        timer.stopCountdown();
-        expiredTimers.push(timerId);
-      }
-    }
-    expiredTimers.forEach((timerId) => {
-      this.timers.delete(timerId);
-      console.log(`Removed expired timer: ${timerId}`);
-    });
-    if (expiredTimers.length > 0) {
-      this.saveToFile();
-    }
-  }
-  getOrCreateTimer(timerId, initialTime = TIMER_CONSTANTS.DEFAULT_INITIAL_TIME) {
-    if (!this.timers.has(timerId)) {
-      console.log(`Creating new timer instance with ID: ${timerId}`);
-      const timer = new TimerInstance(timerId, initialTime);
-      this.timers.set(timerId, timer);
-      if (timerId !== this.defaultTimerId) {
-        this.scheduleNextSave();
-      }
-    }
-    return this.timers.get(timerId);
-  }
-  getTimer(timerId = this.defaultTimerId) {
-    return this.timers.get(timerId);
-  }
-  removeTimer(timerId) {
-    const timer = this.getTimer(timerId);
-    if (timer && !timer.hasSubscribers() && timerId !== this.defaultTimerId) {
-      timer.stopCountdown();
-      const deleted = this.timers.delete(timerId);
-      if (deleted) {
-        this.scheduleNextSave();
-      }
-      return deleted;
-    }
-    return false;
-  }
-  async forceSave() {
-    await this.saveToFile();
-  }
-  getStats() {
-    let running = 0, stopped = 0, completed = 0, expired = 0;
-    for (const timer of this.timers.values()) {
-      if (timer.isExpired()) {
-        expired++;
-      } else {
-        switch (timer.getState()) {
-          case "running":
-            running++;
-            break;
-          case "stopped":
-            stopped++;
-            break;
-          case "completed":
-            completed++;
-            break;
-        }
-      }
-    }
-    return {
-      total: this.timers.size,
-      running,
-      stopped,
-      completed,
-      expired
-    };
-  }
-  destroy() {
-    if (this.saveInterval) {
-      clearInterval(this.saveInterval);
-    }
-    this.saveToFile().then(() => {
-      console.log("Timer manager destroyed and data saved");
-    });
-    for (const timer of this.timers.values()) {
-      timer.stopCountdown();
-    }
-  }
-}
-var timerManager = new TimerManager;
-
-// src/http.ts
-var createTimerActionHandler = (action) => {
-  return async (request, reply) => {
-    const { timerId } = request.params;
-    const timer = timerManager.getTimer(timerId);
-    if (!timer) {
-      return reply.status(404).send({ success: false, error: "Timer not found" });
-    }
-    try {
-      action(timer, request);
-      if (timer.getState() !== "running" && timer.getTime() > 0) {
-        timer.startCountdown();
-      }
-      return { success: true, timerId, currentTime: timer.getTime(), state: timer.getState() };
-    } catch (e) {
-      return reply.status(400).send({ success: false, timerId, error: e.message });
-    }
-  };
-};
-var timerRoutes = async (fastify) => {
-  const API_PREFIX = "/timers";
-  fastify.put(`${API_PREFIX}/:timerId`, {
-    schema: {
-      params: { type: "object", properties: { timerId: { type: ["string", "number"] } }, required: ["timerId"] },
-      body: { type: "object", properties: { time: { type: "number", minimum: 0 } }, required: ["time"] }
-    }
-  }, async (request, reply) => {
-    const { timerId } = request.params;
-    const { time } = request.body;
-    try {
-      const timer = timerManager.getOrCreateTimer(timerId, time);
-      timer.setTime(time);
-      timer.startCountdown();
-      return { success: true, timerId, currentTime: timer.getTime(), state: timer.getState() };
-    } catch (e) {
-      return reply.status(500).send({ success: false, timerId, error: e.message });
-    }
-  });
-  fastify.get(`${API_PREFIX}/:timerId/status`, async (request, reply) => {
-    const { timerId } = request.params;
-    const timer = timerManager.getTimer(timerId);
-    if (timer) {
-      return timer.getStatus();
-    }
-    return reply.status(404).send({ error: "Timer not found" });
-  });
-  fastify.patch(`${API_PREFIX}/:timerId/add`, { schema: { body: { type: "object", properties: { seconds: { type: "number" } }, required: ["seconds"] } } }, createTimerActionHandler((timer, req) => timer.add(req.body.seconds)));
-  fastify.patch(`${API_PREFIX}/:timerId/subtract`, { schema: { body: { type: "object", properties: { seconds: { type: "number" } }, required: ["seconds"] } } }, createTimerActionHandler((timer, req) => timer.subtract(req.body.seconds)));
-  fastify.patch(`${API_PREFIX}/:timerId/multiply`, { schema: { body: { type: "object", properties: { factor: { type: "number", minimum: 0 } }, required: ["factor"] } } }, createTimerActionHandler((timer, req) => timer.multiply(req.body.factor)));
-  fastify.patch(`${API_PREFIX}/:timerId/divide`, { schema: { body: { type: "object", properties: { divisor: { type: "number", exclusiveMinimum: 0 } }, required: ["divisor"] } } }, createTimerActionHandler((timer, req) => timer.divide(req.body.divisor)));
-  fastify.post(`${API_PREFIX}/:timerId/reset`, createTimerActionHandler((timer) => timer.reset()));
-  fastify.delete(`${API_PREFIX}/:timerId`, async (request, reply) => {
-    const { timerId } = request.params;
-    const success = timerManager.removeTimer(timerId);
-    if (success) {
-      return { success: true, message: `Timer ${timerId} removed.` };
-    }
-    return reply.status(404).send({ success: false, error: "Timer not found or cannot be removed." });
-  });
-  fastify.get(`${API_PREFIX}/stats`, async (request, reply) => {
-    return timerManager.getStats();
-  });
-};
-
 // src/p2p/p2pService.ts
 import { randomUUID } from "crypto";
 
@@ -50480,12 +49999,737 @@ var p2pRoutes = async (fastify) => {
   });
 };
 
+// src/constants/timer.constants.ts
+var TIMER_CONSTANTS = {
+  DEFAULT_INITIAL_TIME: 60,
+  DEFAULT_INTERVAL: 1000,
+  ONE_DAY_MS: 24 * 60 * 60 * 1000,
+  AUTO_SAVE_INTERVAL: 30000,
+  DELAYED_SAVE_TIMEOUT: 5000,
+  DEFAULT_TIMER_ID: 1,
+  STORAGE_VERSION: "1.0",
+  DEFAULT_STORAGE_FILE: "./timers.json"
+};
+
+// src/utils/timer.utils.ts
+class TimerUtils {
+  static validateTime(time) {
+    if (time < 0) {
+      throw new Error("Time cannot be negative.");
+    }
+  }
+  static validateSeconds(seconds, operation) {
+    if (seconds < 0) {
+      throw new Error(`Cannot ${operation} negative seconds.`);
+    }
+  }
+  static isExpired(createdAt) {
+    return Date.now() - createdAt > TIMER_CONSTANTS.ONE_DAY_MS;
+  }
+  static calculateExpirationTime(createdAt) {
+    return createdAt + TIMER_CONSTANTS.ONE_DAY_MS;
+  }
+  static formatTimerLog(timerId, action, currentTime) {
+    return `Timer ${timerId} ${action}: ${currentTime} seconds`;
+  }
+  static formatSecondsLog(seconds, action, timerId, currentTime) {
+    return `${seconds} seconds ${action} timer ${timerId}. Current time: ${currentTime} seconds`;
+  }
+}
+
+// src/core/timer-instance.ts
+class TimerInstance {
+  currentTime;
+  initialTime;
+  intervalId = null;
+  subscribers = new Map;
+  state = "stopped";
+  timerId;
+  createdAt;
+  constructor(timerId, initialTime = TIMER_CONSTANTS.DEFAULT_INITIAL_TIME, currentTime, state = "stopped", createdAt) {
+    this.timerId = timerId;
+    this.initialTime = currentTime ?? initialTime;
+    this.currentTime = currentTime ?? initialTime;
+    this.state = state;
+    this.createdAt = createdAt ?? Date.now();
+  }
+  broadcast(message) {
+    if (this.subscribers.size === 0)
+      return;
+    const messageString = JSON.stringify(message);
+    const disconnectedSubscribers = [];
+    this.subscribers.forEach((subscriber, subscriberId) => {
+      try {
+        subscriber.send(messageString);
+      } catch (error) {
+        console.error(`Error sending message to subscriber ${subscriberId} for timer ${this.timerId}:`, error);
+        disconnectedSubscribers.push(subscriberId);
+      }
+    });
+    disconnectedSubscribers.forEach((subscriberId) => {
+      this.subscribers.delete(subscriberId);
+    });
+  }
+  broadcastTime() {
+    this.broadcast({
+      type: "timeUpdate",
+      time: this.currentTime,
+      state: this.state,
+      timerId: this.timerId,
+      timestamp: Date.now()
+    });
+  }
+  broadcastStateChange(source = "websocket") {
+    this.broadcast({
+      type: "stateChange",
+      time: this.currentTime,
+      state: this.state,
+      timerId: this.timerId,
+      source,
+      timestamp: Date.now()
+    });
+  }
+  subscribe(subscriber) {
+    this.subscribers.set(subscriber.id, subscriber);
+    console.log(`[Timer ${this.timerId}] Client ${subscriber.id} subscribed. Total subscribers: ${this.subscribers.size}`);
+    try {
+      subscriber.send(JSON.stringify({
+        type: "initialState",
+        time: this.currentTime,
+        state: this.state,
+        timerId: this.timerId,
+        timestamp: Date.now()
+      }));
+    } catch (error) {
+      console.error(`Error sending initial state to subscriber ${subscriber.id}:`, error);
+      this.subscribers.delete(subscriber.id);
+    }
+  }
+  unsubscribe(subscriberId) {
+    const wasSubscribed = this.subscribers.has(subscriberId);
+    this.subscribers.delete(subscriberId);
+    if (wasSubscribed) {
+      console.log(`[Timer ${this.timerId}] Client ${subscriberId} unsubscribed. Total subscribers: ${this.subscribers.size}`);
+    }
+  }
+  startCountdown(interval = TIMER_CONSTANTS.DEFAULT_INTERVAL) {
+    console.log(`[Timer ${this.timerId}] Start countdown requested. Current state: ${this.state}, time: ${this.currentTime}`);
+    if (this.state === "running") {
+      console.log(`[Timer ${this.timerId}] Already running, ignoring start request`);
+      return;
+    }
+    if (this.currentTime <= 0) {
+      this.state = "completed";
+      this.broadcastTime();
+      this.broadcastStateChange();
+      console.log(`[Timer ${this.timerId}] Cannot start - time is 0 or negative`);
+      return;
+    }
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+    }
+    this.state = "running";
+    this.broadcastTime();
+    this.broadcastStateChange();
+    this.intervalId = setInterval(() => {
+      if (this.currentTime > 0) {
+        this.currentTime--;
+        this.broadcastTime();
+        if (this.currentTime === 0) {
+          this.state = "completed";
+          this.broadcast({
+            type: "timerEnd",
+            message: "Timer finished!",
+            timerId: this.timerId,
+            timestamp: Date.now()
+          });
+          this.stopCountdown();
+        }
+      }
+    }, interval);
+    console.log(`[Timer ${this.timerId}] Countdown started successfully`);
+  }
+  stopCountdown() {
+    console.log(`[Timer ${this.timerId}] Stop countdown requested. Current state: ${this.state}`);
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
+    }
+    const previousState = this.state;
+    if (this.state === "running") {
+      this.state = this.currentTime <= 0 ? "completed" : "stopped";
+    }
+    if (previousState !== this.state) {
+      this.broadcastTime();
+      this.broadcastStateChange();
+    }
+    console.log(`[Timer ${this.timerId}] Countdown stopped. New state: ${this.state}`);
+  }
+  setTime(newTime) {
+    console.log(`[Timer ${this.timerId}] Setting time to: ${newTime}`);
+    TimerUtils.validateTime(newTime);
+    this.stopCountdown();
+    this.currentTime = newTime;
+    this.initialTime = newTime;
+    this.state = newTime === 0 ? "completed" : "stopped";
+    this.broadcastTime();
+    this.broadcastStateChange("http");
+    console.log(`[Timer ${this.timerId}] Time set successfully. New state: ${this.state}`);
+  }
+  add(seconds) {
+    console.log(`[Timer ${this.timerId}] Adding ${seconds} seconds`);
+    TimerUtils.validateSeconds(seconds, "add");
+    this.currentTime += seconds;
+    if (this.state === "completed" && this.currentTime > 0) {
+      this.state = "stopped";
+    }
+    this.broadcastTime();
+    this.broadcastStateChange("http");
+    console.log(`[Timer ${this.timerId}] Added ${seconds} seconds. New time: ${this.currentTime}, state: ${this.state}`);
+  }
+  subtract(seconds) {
+    console.log(`[Timer ${this.timerId}] Subtracting ${seconds} seconds`);
+    TimerUtils.validateSeconds(seconds, "subtract");
+    this.currentTime = Math.max(0, this.currentTime - seconds);
+    if (this.currentTime === 0) {
+      const wasRunning = this.state === "running";
+      this.state = "completed";
+      if (wasRunning) {
+        this.stopCountdown();
+      }
+    }
+    this.broadcastTime();
+    this.broadcastStateChange("http");
+    console.log(`[Timer ${this.timerId}] Subtracted ${seconds} seconds. New time: ${this.currentTime}, state: ${this.state}`);
+  }
+  reset() {
+    console.log(`[Timer ${this.timerId}] Resetting to initial time: ${this.initialTime}`);
+    this.stopCountdown();
+    this.currentTime = this.initialTime;
+    this.state = this.currentTime === 0 ? "completed" : "stopped";
+    this.broadcastTime();
+    this.broadcastStateChange("http");
+    console.log(`[Timer ${this.timerId}] Reset completed. New state: ${this.state}`);
+  }
+  multiply(factor) {
+    if (typeof factor !== "number" || factor < 0) {
+      throw new Error("Factor must be a non-negative number.");
+    }
+    console.log(`[Timer ${this.timerId}] Multiplying time by ${factor}`);
+    this.currentTime = Math.round(this.currentTime * factor);
+    if (this.state === "completed" && this.currentTime > 0) {
+      this.state = "stopped";
+    }
+    this.broadcastTime();
+    this.broadcastStateChange("http");
+    console.log(`[Timer ${this.timerId}] Time multiplied. New time: ${this.currentTime}, state: ${this.state}`);
+  }
+  divide(divisor) {
+    if (typeof divisor !== "number" || divisor <= 0) {
+      throw new Error("Divisor must be a positive number greater than zero.");
+    }
+    console.log(`[Timer ${this.timerId}] Dividing time by ${divisor}`);
+    this.currentTime = Math.round(this.currentTime / divisor);
+    if (this.currentTime === 0 && this.state !== "completed") {
+      this.state = "completed";
+      this.stopCountdown();
+    }
+    this.broadcastTime();
+    this.broadcastStateChange("http");
+    console.log(`[Timer ${this.timerId}] Time divided. New time: ${this.currentTime}, state: ${this.state}`);
+  }
+  getTime() {
+    return this.currentTime;
+  }
+  getState() {
+    return this.state;
+  }
+  getInitialTime() {
+    return this.currentTime || this.initialTime;
+  }
+  hasSubscribers() {
+    return this.subscribers.size > 0;
+  }
+  isExpired() {
+    return TimerUtils.isExpired(this.createdAt);
+  }
+  getSubscriberCount() {
+    return this.subscribers.size;
+  }
+  getStatus() {
+    return {
+      timerId: this.timerId,
+      currentTime: this.currentTime,
+      initialTime: this.initialTime,
+      state: this.state,
+      subscriberCount: this.subscribers.size,
+      createdAt: new Date(this.createdAt).toISOString()
+    };
+  }
+  toJSON() {
+    return {
+      timerId: this.timerId,
+      currentTime: this.currentTime,
+      initialTime: this.initialTime,
+      state: this.state,
+      createdAt: this.createdAt,
+      expiresAt: TimerUtils.calculateExpirationTime(this.createdAt),
+      lastSaved: Date.now()
+    };
+  }
+  debug() {
+    console.log(`[Timer ${this.timerId}] Debug Info:`, {
+      currentTime: this.currentTime,
+      initialTime: this.initialTime,
+      state: this.state,
+      isRunning: this.intervalId !== null,
+      subscriberCount: this.subscribers.size,
+      subscribers: Array.from(this.subscribers.keys())
+    });
+  }
+}
+
+// src/services/storage.service.ts
+import { writeFile, readFile, existsSync as existsSync2 } from "fs";
+import { promisify } from "util";
+var writeFileAsync = promisify(writeFile);
+var readFileAsync = promisify(readFile);
+
+class StorageService {
+  storageFile;
+  constructor(storageFile = TIMER_CONSTANTS.DEFAULT_STORAGE_FILE) {
+    this.storageFile = storageFile;
+  }
+  async loadTimers() {
+    try {
+      if (!existsSync2(this.storageFile)) {
+        console.log("Timer storage file does not exist, starting fresh");
+        return null;
+      }
+      const fileContent = await readFileAsync(this.storageFile, "utf8");
+      const storage = JSON.parse(fileContent);
+      console.log(`Loaded storage from ${this.storageFile}`);
+      return storage;
+    } catch (error) {
+      console.error("Error loading timers from file:", error);
+      throw error;
+    }
+  }
+  async saveTimers(timersData) {
+    try {
+      const storage = {
+        version: TIMER_CONSTANTS.STORAGE_VERSION,
+        timers: timersData,
+        lastCleanup: Date.now()
+      };
+      await writeFileAsync(this.storageFile, JSON.stringify(storage, null, 2));
+      console.log(`Saved ${Object.keys(storage.timers).length} timers to storage`, storage);
+    } catch (error) {
+      console.error("Error saving timers to file:", error);
+    }
+  }
+  getStorageFile() {
+    return this.storageFile;
+  }
+}
+
+// src/core/timer-manager.ts
+class TimerManager {
+  timers = new Map;
+  defaultTimerId = TIMER_CONSTANTS.DEFAULT_TIMER_ID;
+  saveInterval = null;
+  storageService;
+  constructor(defaultInitialTime = TIMER_CONSTANTS.DEFAULT_INITIAL_TIME, storageFile) {
+    this.storageService = new StorageService(storageFile);
+    this.initializeManager(defaultInitialTime);
+  }
+  async initializeManager(defaultInitialTime) {
+    try {
+      await this.loadFromFile();
+      if (!this.timers.has(this.defaultTimerId)) {
+        this.getOrCreateTimer(this.defaultTimerId, defaultInitialTime);
+      }
+      this.cleanupExpiredTimers();
+      this.startAutoSave();
+    } catch (error) {
+      console.error("Error initializing timer manager:", error);
+      this.getOrCreateTimer(this.defaultTimerId, defaultInitialTime);
+      this.startAutoSave();
+    }
+  }
+  async loadFromFile() {
+    const storage = await this.storageService.loadTimers();
+    if (!storage) {
+      return;
+    }
+    let loadedCount = 0;
+    for (const [key, timerData] of Object.entries(storage.timers)) {
+      if (Date.now() < timerData.expiresAt) {
+        const timer = new TimerInstance(timerData.timerId, timerData.initialTime, timerData.currentTime, timerData.state, timerData.createdAt);
+        if (timerData.state === "running") {
+          timer.stopCountdown();
+        }
+        this.timers.set(timerData.timerId, timer);
+        loadedCount++;
+      }
+    }
+    console.log(`Loaded ${loadedCount} timers from storage`);
+  }
+  async saveToFile() {
+    const timersData = {};
+    for (const [timerId, timer] of this.timers.entries()) {
+      if (timerId !== this.defaultTimerId && !timer.isExpired()) {
+        timersData[timerId.toString()] = timer.toJSON();
+      }
+    }
+    await this.storageService.saveTimers(timersData);
+  }
+  startAutoSave() {
+    this.saveInterval = setInterval(() => {
+      this.saveToFile();
+    }, TIMER_CONSTANTS.AUTO_SAVE_INTERVAL);
+  }
+  scheduleNextSave() {
+    setTimeout(() => {
+      this.saveToFile();
+    }, TIMER_CONSTANTS.DELAYED_SAVE_TIMEOUT);
+  }
+  cleanupExpiredTimers() {
+    const expiredTimers = [];
+    for (const [timerId, timer] of this.timers.entries()) {
+      if (timerId !== this.defaultTimerId && timer.isExpired()) {
+        timer.stopCountdown();
+        expiredTimers.push(timerId);
+      }
+    }
+    expiredTimers.forEach((timerId) => {
+      this.timers.delete(timerId);
+      console.log(`Removed expired timer: ${timerId}`);
+    });
+    if (expiredTimers.length > 0) {
+      this.saveToFile();
+    }
+  }
+  getOrCreateTimer(timerId, initialTime = TIMER_CONSTANTS.DEFAULT_INITIAL_TIME) {
+    if (!this.timers.has(timerId)) {
+      console.log(`Creating new timer instance with ID: ${timerId}`);
+      console.log(`Creating new timer`, this.timers);
+      const timer = new TimerInstance(timerId, initialTime);
+      this.timers.set(timerId, timer);
+      if (timerId !== this.defaultTimerId) {
+        this.scheduleNextSave();
+      }
+    }
+    const response = this.timers.get(`${timerId}`);
+    console.log("getOrCreateTimer", response);
+    console.log("typeof", typeof `${timerId}`);
+    if (response)
+      return response;
+    return response;
+  }
+  getTimer(timerId = this.defaultTimerId) {
+    return this.timers.get(timerId);
+  }
+  removeTimer(timerId) {
+    const timer = this.getTimer(timerId);
+    if (timer && !timer.hasSubscribers() && timerId !== this.defaultTimerId) {
+      timer.stopCountdown();
+      const deleted = this.timers.delete(timerId);
+      if (deleted) {
+        this.scheduleNextSave();
+      }
+      return deleted;
+    }
+    return false;
+  }
+  async forceSave() {
+    await this.saveToFile();
+  }
+  getStats() {
+    let running = 0, stopped = 0, completed = 0, expired = 0;
+    for (const timer of this.timers.values()) {
+      if (timer.isExpired()) {
+        expired++;
+      } else {
+        switch (timer.getState()) {
+          case "running":
+            running++;
+            break;
+          case "stopped":
+            stopped++;
+            break;
+          case "completed":
+            completed++;
+            break;
+        }
+      }
+    }
+    return {
+      total: this.timers.size,
+      running,
+      stopped,
+      completed,
+      expired
+    };
+  }
+  destroy() {
+    if (this.saveInterval) {
+      clearInterval(this.saveInterval);
+    }
+    this.saveToFile().then(() => {
+      console.log("Timer manager destroyed and data saved");
+    });
+    for (const timer of this.timers.values()) {
+      timer.stopCountdown();
+    }
+  }
+}
+
+// src/http.ts
+var createTimerActionHandler = (timerManager, action, autoCreateTimer = false, autoStart = false) => {
+  return async (request, reply) => {
+    const { timerId } = request.params;
+    let timer = timerManager.getTimer(timerId);
+    if (!timer && autoCreateTimer) {
+      timer = timerManager.getOrCreateTimer(timerId, 0);
+    }
+    if (!timer) {
+      return reply.status(404).send({
+        success: false,
+        error: `Timer ${timerId} not found. Create it first using PUT /timers/${timerId}`
+      });
+    }
+    try {
+      console.log(`[HTTP] Executing action on timer ${timerId}. Current state: ${timer.getState()}, time: ${timer.getTime()}`);
+      action(timer, request);
+      if (autoStart && timer.getState() !== "running" && timer.getTime() > 0) {
+        timer.startCountdown();
+      }
+      const response = {
+        success: true,
+        timerId,
+        currentTime: timer.getTime(),
+        state: timer.getState(),
+        subscriberCount: timer.getSubscriberCount()
+      };
+      console.log(`[HTTP] Action completed on timer ${timerId}. New state: ${timer.getState()}, time: ${timer.getTime()}`);
+      return response;
+    } catch (e) {
+      console.error(`[HTTP] Error executing action on timer ${timerId}:`, e.message);
+      return reply.status(400).send({
+        success: false,
+        timerId,
+        error: e.message
+      });
+    }
+  };
+};
+var createTimerRoutes = (timerManager) => async (fastify) => {
+  const API_PREFIX = "/timers";
+  fastify.put(`${API_PREFIX}/:timerId`, {
+    schema: {
+      params: {
+        type: "object",
+        properties: { timerId: { type: ["string", "number"] } },
+        required: ["timerId"]
+      },
+      body: {
+        type: "object",
+        properties: { time: { type: "number", minimum: 0 } },
+        required: ["time"]
+      }
+    }
+  }, async (request, reply) => {
+    const { timerId } = request.params;
+    const { time } = request.body;
+    try {
+      const timer = timerManager.getOrCreateTimer(timerId, time);
+      timer.setTime(time);
+      if (time > 0) {
+        timer.startCountdown();
+      }
+      return {
+        success: true,
+        timerId,
+        currentTime: timer.getTime(),
+        state: timer.getState(),
+        message: "Timer created/updated successfully"
+      };
+    } catch (e) {
+      return reply.status(500).send({
+        success: false,
+        timerId,
+        error: e.message
+      });
+    }
+  });
+  fastify.get(`${API_PREFIX}/:timerId/status`, async (request, reply) => {
+    const { timerId } = request.params;
+    const timer = timerManager.getTimer(timerId);
+    if (timer) {
+      return {
+        success: true,
+        ...timer.getStatus()
+      };
+    }
+    return reply.status(404).send({
+      success: false,
+      error: `Timer ${timerId} not found. Create it first using PUT /timers/${timerId}`
+    });
+  });
+  fastify.get(`${API_PREFIX}`, async (request, reply) => {
+    try {
+      const stats = timerManager.getStats();
+      return {
+        success: true,
+        ...stats
+      };
+    } catch (e) {
+      return reply.status(500).send({
+        success: false,
+        error: e.message
+      });
+    }
+  });
+  fastify.patch(`${API_PREFIX}/:timerId/add`, {
+    schema: {
+      params: {
+        type: "object",
+        properties: { timerId: { type: ["string", "number"] } },
+        required: ["timerId"]
+      },
+      body: {
+        type: "object",
+        properties: { seconds: { type: "number" } },
+        required: ["seconds"]
+      }
+    }
+  }, createTimerActionHandler(timerManager, (timer, req) => {
+    const { seconds } = req.body;
+    timer.add(seconds);
+  }));
+  fastify.patch(`${API_PREFIX}/:timerId/subtract`, {
+    schema: {
+      params: {
+        type: "object",
+        properties: { timerId: { type: ["string", "number"] } },
+        required: ["timerId"]
+      },
+      body: {
+        type: "object",
+        properties: { seconds: { type: "number" } },
+        required: ["seconds"]
+      }
+    }
+  }, createTimerActionHandler(timerManager, (timer, req) => {
+    const { seconds } = req.body;
+    timer.subtract(seconds);
+  }));
+  fastify.patch(`${API_PREFIX}/:timerId/multiply`, {
+    schema: {
+      params: {
+        type: "object",
+        properties: { timerId: { type: ["string", "number"] } },
+        required: ["timerId"]
+      },
+      body: {
+        type: "object",
+        properties: { factor: { type: "number", minimum: 0 } },
+        required: ["factor"]
+      }
+    }
+  }, createTimerActionHandler(timerManager, (timer, req) => {
+    const { factor } = req.body;
+    timer.multiply(factor);
+  }));
+  fastify.patch(`${API_PREFIX}/:timerId/divide`, {
+    schema: {
+      params: {
+        type: "object",
+        properties: { timerId: { type: ["string", "number"] } },
+        required: ["timerId"]
+      },
+      body: {
+        type: "object",
+        properties: { divisor: { type: "number", exclusiveMinimum: 0 } },
+        required: ["divisor"]
+      }
+    }
+  }, createTimerActionHandler(timerManager, (timer, req) => {
+    const { divisor } = req.body;
+    timer.divide(divisor);
+  }));
+  fastify.post(`${API_PREFIX}/:timerId/reset`, {
+    schema: {
+      params: {
+        type: "object",
+        properties: { timerId: { type: ["string", "number"] } },
+        required: ["timerId"]
+      }
+    }
+  }, createTimerActionHandler(timerManager, (timer) => timer.reset()));
+  fastify.post(`${API_PREFIX}/:timerId/pause`, {
+    schema: {
+      params: {
+        type: "object",
+        properties: { timerId: { type: ["string", "number"] } },
+        required: ["timerId"]
+      }
+    }
+  }, createTimerActionHandler(timerManager, (timer) => timer.stopCountdown()));
+  fastify.post(`${API_PREFIX}/:timerId/resume`, {
+    schema: {
+      params: {
+        type: "object",
+        properties: { timerId: { type: ["string", "number"] } },
+        required: ["timerId"]
+      }
+    }
+  }, createTimerActionHandler(timerManager, (timer) => timer.startCountdown()));
+  fastify.delete(`${API_PREFIX}/:timerId`, {
+    schema: {
+      params: {
+        type: "object",
+        properties: { timerId: { type: ["string", "number"] } },
+        required: ["timerId"]
+      }
+    }
+  }, async (request, reply) => {
+    const { timerId } = request.params;
+    const success = timerManager.removeTimer(timerId);
+    if (success) {
+      return {
+        success: true,
+        message: `Timer ${timerId} removed successfully.`
+      };
+    }
+    return reply.status(404).send({
+      success: false,
+      error: `Timer ${timerId} not found or cannot be removed.`
+    });
+  });
+  fastify.get(`${API_PREFIX}/stats`, async (request, reply) => {
+    try {
+      const stats = timerManager.getStats();
+      return {
+        success: true,
+        ...stats
+      };
+    } catch (e) {
+      return reply.status(500).send({
+        success: false,
+        error: e.message
+      });
+    }
+  });
+};
+
 // src/ws.ts
-var createWsTimerRoutes = async (fastify) => {
+var createWsTimerRoutes = (timerManager) => async (fastify) => {
   const getTimerIdFromRequest = (req) => {
     const { timerId: rawTimerId } = req.params;
     if (rawTimerId === undefined || rawTimerId === "") {
-      return 0;
+      return 1;
     }
     return isNaN(Number(rawTimerId)) ? rawTimerId : Number(rawTimerId);
   };
@@ -50493,80 +50737,177 @@ var createWsTimerRoutes = async (fastify) => {
     websocket: true,
     handler: (connection, req) => {
       const timerId = getTimerIdFromRequest(req);
-      handleWebSocketConnection(connection, timerId);
+      handleWebSocketConnection(connection, timerId, timerManager);
     }
   };
   fastify.get("/ws", handler);
   fastify.get("/ws/:timerId", handler);
 };
-function handleWebSocketConnection(connection, timerId) {
+function handleWebSocketConnection(connection, timerId, timerManager) {
   console.log(`\uD83D\uDD0C New WebSocket connection request for timerId: ${timerId}`);
-  const timer = timerManager.getOrCreateTimer(timerId);
+  let timer = getTimer(timerId, timerManager);
   const subscriber = {
     id: Math.random().toString(36).substr(2, 9),
     send: (data) => {
-      if (connection.readyState === 1) {
-        connection.send(data);
+      try {
+        if (connection.readyState === 1) {
+          connection.send(data);
+        }
+      } catch (error) {
+        console.error(`Error sending WebSocket message:`, error);
       }
     }
   };
   console.log(`✅ WebSocket connection established: ${subscriber.id} for timer ${timerId}`);
   timer.subscribe(subscriber);
+  subscriber.send(JSON.stringify({
+    type: "connected",
+    time: timer.getTime(),
+    state: timer.getState(),
+    timerId,
+    subscriberId: subscriber.id
+  }));
+  const heartbeatInterval = setInterval(() => {
+    if (connection.readyState === 1) {
+      timer = getTimer(timerId, timerManager);
+      console.log("uodate timer", timer);
+      subscriber.send(JSON.stringify({
+        type: "heartbeat",
+        time: timer.getTime(),
+        state: timer.getState(),
+        timerId,
+        timestamp: Date.now()
+      }));
+    } else {
+      clearInterval(heartbeatInterval);
+    }
+  }, 2000);
   connection.on("message", (data) => {
     const rawMessage = data.toString();
-    console.log(`[Timer ${timerId}] \uD83D\uDCE8 Msg from ${subscriber.id}: ${rawMessage}`);
+    console.log(`[Timer ${timerId}] \uD83D\uDCE8 Message from ${subscriber.id}: ${rawMessage}`);
     try {
       const message = JSON.parse(rawMessage);
       const { action, value } = message;
-      const currentTimer = timerManager.getTimer(timerId);
+      const currentTimer = getTimer(timerId, timerManager);
       if (!currentTimer) {
-        subscriber.send(JSON.stringify({ type: "error", message: `Timer ${timerId} not found.` }));
+        subscriber.send(JSON.stringify({
+          type: "error",
+          message: `Timer ${timerId} not found.`,
+          timerId
+        }));
         connection.close();
         return;
       }
+      let actionExecuted = false;
       switch (action) {
         case "start":
           currentTimer.startCountdown();
+          actionExecuted = true;
           break;
         case "stop":
           currentTimer.stopCountdown();
+          actionExecuted = true;
           break;
         case "setTime":
-          if (typeof value === "number")
+          if (typeof value === "number" && value >= 0) {
             currentTimer.setTime(value);
+            actionExecuted = true;
+          } else {
+            subscriber.send(JSON.stringify({
+              type: "error",
+              message: "setTime requires a valid non-negative number",
+              timerId
+            }));
+          }
           break;
         case "addTime":
-          if (typeof value === "number")
+          if (typeof value === "number") {
             currentTimer.add(value);
+            actionExecuted = true;
+          } else {
+            subscriber.send(JSON.stringify({
+              type: "error",
+              message: "addTime requires a valid number",
+              timerId
+            }));
+          }
           break;
         case "restTime":
-          if (typeof value === "number")
+          if (typeof value === "number") {
             currentTimer.subtract(value);
+            actionExecuted = true;
+          } else {
+            subscriber.send(JSON.stringify({
+              type: "error",
+              message: "restTime requires a valid number",
+              timerId
+            }));
+          }
+          break;
+        case "reset":
+          currentTimer.reset();
+          actionExecuted = true;
           break;
         case "getTime":
           subscriber.send(JSON.stringify({
             type: "timeUpdate",
             time: currentTimer.getTime(),
             state: currentTimer.getState(),
-            timerId
+            timerId,
+            source: "websocket-request"
           }));
+          actionExecuted = true;
           break;
         default:
-          subscriber.send(JSON.stringify({ type: "error", message: `Unknown action: ${action}` }));
+          subscriber.send(JSON.stringify({
+            type: "error",
+            message: `Unknown action: ${action}`,
+            timerId
+          }));
+      }
+      if (actionExecuted) {
+        subscriber.send(JSON.stringify({
+          type: "actionConfirmed",
+          action,
+          value,
+          time: currentTimer.getTime(),
+          state: currentTimer.getState(),
+          timerId
+        }));
       }
     } catch (error) {
       console.error(`❌ Error processing message from ${subscriber.id}:`, error);
-      subscriber.send(JSON.stringify({ type: "error", message: "Invalid JSON message format" }));
+      subscriber.send(JSON.stringify({
+        type: "error",
+        message: "Invalid JSON message format",
+        timerId
+      }));
     }
   });
   connection.on("close", () => {
-    console.log(`\uD83D\uDD0C WebSocket connection closed: ${subscriber.id}`);
-    timer.unsubscribe(subscriber.id);
+    console.log(`\uD83D\uDD0C WebSocket connection closed: ${subscriber.id} for timer ${timerId}`);
+    cleanup();
   });
   connection.on("error", (error) => {
     console.error(`❌ WebSocket error on connection ${subscriber.id}:`, error);
-    timer.unsubscribe(subscriber.id);
+    cleanup();
   });
+  function cleanup() {
+    if (heartbeatInterval) {
+      clearInterval(heartbeatInterval);
+    }
+    const currentTimer = getTimer(timerId, timerManager);
+    if (currentTimer) {
+      currentTimer.unsubscribe(subscriber.id);
+      console.log(`Unsubscribed ${subscriber.id} from timer ${timerId}`);
+    }
+  }
+}
+function getTimer(timerId, timerManager) {
+  let timer = timerManager.getOrCreateTimer(timerId);
+  if (!timer)
+    timer = timerManager.getOrCreateTimer(timerId);
+  return timer;
 }
 
 // src/index.ts
@@ -50587,9 +50928,12 @@ async function buildServer() {
       root: path2.join(__dirname2, "..", "public"),
       prefix: "/"
     });
-    await fastify.register(timerRoutes);
+    const timerManager = new TimerManager;
+    const httpRoutes = createTimerRoutes(timerManager);
+    const wsRoutes = createWsTimerRoutes(timerManager);
+    await fastify.register(httpRoutes);
+    await fastify.register(wsRoutes);
     await fastify.register(p2pRoutes);
-    await fastify.register(createWsTimerRoutes);
     return fastify;
   } catch (err) {
     fastify.log.error(err);
