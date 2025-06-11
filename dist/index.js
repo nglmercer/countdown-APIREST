@@ -4667,7 +4667,7 @@ var require_indexes = __commonJS((exports, module) => {
 
 // node_modules/thread-stream/index.js
 var require_thread_stream = __commonJS((exports, module) => {
-  var __dirname = "C:\\Users\\Admin.DESKTOP-GQ54BIK\\Documents\\APIREST\\node_modules\\thread-stream";
+  var __dirname = "C:\\Users\\Admin\\Documents\\GitHub\\countdown-APIREST\\node_modules\\thread-stream";
   var { version } = require_package();
   var { EventEmitter } = __require("events");
   var { Worker } = __require("worker_threads");
@@ -5088,7 +5088,7 @@ var require_thread_stream = __commonJS((exports, module) => {
 
 // node_modules/pino/lib/transport.js
 var require_transport = __commonJS((exports, module) => {
-  var __dirname = "C:\\Users\\Admin.DESKTOP-GQ54BIK\\Documents\\APIREST\\node_modules\\pino\\lib";
+  var __dirname = "C:\\Users\\Admin\\Documents\\GitHub\\countdown-APIREST\\node_modules\\pino\\lib";
   var { createRequire: createRequire2 } = __require("module");
   var getCallers = require_caller();
   var { join, isAbsolute, sep } = __require("node:path");
@@ -50423,7 +50423,6 @@ class P2PService {
         sendMessage(socket, { type: "GREETING", from: this.instanceName });
       } catch (error) {
         console.error(`[P2P] Fallo al conectar con ${peer.name}:`, error.message);
-        this.stop();
       }
     });
     peerManager.on("peerDown", (peer) => {

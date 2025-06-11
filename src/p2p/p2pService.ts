@@ -63,7 +63,6 @@ export class P2PService {
         sendMessage(socket, { type: 'GREETING', from: this.instanceName });
       } catch (error) {
         console.error(`[P2P] Fallo al conectar con ${peer.name}:`, (error as Error).message);
-        this.stop();
       }
     });
 
