@@ -50921,7 +50921,10 @@ var fastify = import_fastify.default({
 async function buildServer() {
   try {
     await fastify.register(import_cors.default, {
-      origin: true
+      origin: true,
+      methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
+      allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+      credentials: false
     });
     await fastify.register(import_websocket.default);
     await fastify.register(import__static.default, {
