@@ -24,7 +24,10 @@ async function buildServer() {
   try {
     // ✅ Permitir todos los orígenes (CORS abierto)
     await fastify.register(fastifyCors, {
-      origin: true
+      origin: true, // Permite cualquier origen
+      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+      credentials: false // Cambia a true si necesitas cookies/auth
     });
 
     // WebSocket
