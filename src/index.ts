@@ -22,12 +22,21 @@ const fastify = Fastify({
 
 async function buildServer() {
   try {
-    // ✅ Permitir todos los orígenes (CORS abierto)
+    // ✅ CORS configurado explícitamente
     await fastify.register(fastifyCors, {
-      origin: true, // Permite cualquier origen
+      origin: (origin, callback) => {
+        callback(null, true); // Permite cualquier origen
+      },
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
       allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-      credentials: false // Cambia a true si necesitas cookies/auth
+      credentials: false,
+      optionsSuccessStatus: 204,
+      preflightContinue: false
+    });
+
+    // ✅ Manejo explícito de OPTIONS para preflight
+    fastify.options('*', async (request, reply) => {
+      return reply.code(204).send();
     });
 
     // WebSocket
