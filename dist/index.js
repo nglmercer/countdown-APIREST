@@ -50339,21 +50339,32 @@ class TimerManager {
   defaultTimerId = TIMER_CONSTANTS.DEFAULT_TIMER_ID;
   saveInterval = null;
   storageService;
+  isInitialized = false;
   constructor(defaultInitialTime = TIMER_CONSTANTS.DEFAULT_INITIAL_TIME, storageFile) {
     this.storageService = new StorageService(storageFile);
+    this.syncInitialize(defaultInitialTime);
     this.initializeManager(defaultInitialTime);
+  }
+  syncInitialize(defaultInitialTime) {
+    const defaultTimer = new TimerInstance(this.defaultTimerId, defaultInitialTime);
+    this.timers.set(this.defaultTimerId, defaultTimer);
+    this.isInitialized = true;
+    console.log(`Default timer created with ID: ${this.defaultTimerId}`);
   }
   async initializeManager(defaultInitialTime) {
     try {
       await this.loadFromFile();
       if (!this.timers.has(this.defaultTimerId)) {
-        this.getOrCreateTimer(this.defaultTimerId, defaultInitialTime);
+        this.syncInitialize(defaultInitialTime);
       }
       this.cleanupExpiredTimers();
       this.startAutoSave();
+      console.log("TimerManager fully initialized");
     } catch (error) {
       console.error("Error initializing timer manager:", error);
-      this.getOrCreateTimer(this.defaultTimerId, defaultInitialTime);
+      if (!this.timers.has(this.defaultTimerId)) {
+        this.syncInitialize(defaultInitialTime);
+      }
       this.startAutoSave();
     }
   }
@@ -50385,6 +50396,9 @@ class TimerManager {
     await this.storageService.saveTimers(timersData);
   }
   startAutoSave() {
+    if (this.saveInterval) {
+      clearInterval(this.saveInterval);
+    }
     this.saveInterval = setInterval(() => {
       this.saveToFile();
     }, TIMER_CONSTANTS.AUTO_SAVE_INTERVAL);
@@ -50411,30 +50425,63 @@ class TimerManager {
     }
   }
   getOrCreateTimer(timerId, initialTime = TIMER_CONSTANTS.DEFAULT_INITIAL_TIME) {
-    if (!this.timers.has(timerId)) {
-      console.log(`Creating new timer instance with ID: ${timerId}`);
-      console.log(`Creating new timer`, this.timers);
-      const timer = new TimerInstance(timerId, initialTime);
-      this.timers.set(timerId, timer);
-      if (timerId !== this.defaultTimerId) {
-        this.scheduleNextSave();
+    console.log(`getOrCreateTimer called with timerId: ${timerId} (type: ${typeof timerId})`);
+    console.log(`Current timers keys:`, Array.from(this.timers.keys()));
+    let normalizedTimerId = timerId;
+    if (typeof timerId === "string" && !isNaN(Number(timerId))) {
+      normalizedTimerId = Number(timerId);
+    }
+    let timer = this.timers.get(normalizedTimerId);
+    if (!timer && typeof normalizedTimerId === "number") {
+      timer = this.timers.get(normalizedTimerId.toString());
+    } else if (!timer && typeof normalizedTimerId === "string") {
+      const numericId = Number(normalizedTimerId);
+      if (!isNaN(numericId)) {
+        timer = this.timers.get(numericId);
       }
     }
-    const response = this.timers.get(`${timerId}`);
-    console.log("getOrCreateTimer", response);
-    console.log("typeof", typeof `${timerId}`);
-    if (response)
-      return response;
-    return response;
+    if (!timer) {
+      console.log(`Creating new timer instance with ID: ${normalizedTimerId}`);
+      timer = new TimerInstance(normalizedTimerId, initialTime);
+      this.timers.set(normalizedTimerId, timer);
+      if (normalizedTimerId !== this.defaultTimerId) {
+        this.scheduleNextSave();
+      }
+      console.log(`Timer created successfully. Total timers: ${this.timers.size}`);
+    } else {
+      console.log(`Existing timer found for ID: ${normalizedTimerId}`);
+    }
+    return timer;
   }
   getTimer(timerId = this.defaultTimerId) {
-    return this.timers.get(timerId);
+    let normalizedTimerId = timerId;
+    if (typeof timerId === "string" && !isNaN(Number(timerId))) {
+      normalizedTimerId = Number(timerId);
+    }
+    let timer = this.timers.get(normalizedTimerId);
+    if (!timer && typeof normalizedTimerId === "number") {
+      timer = this.timers.get(normalizedTimerId.toString());
+    } else if (!timer && typeof normalizedTimerId === "string") {
+      const numericId = Number(normalizedTimerId);
+      if (!isNaN(numericId)) {
+        timer = this.timers.get(numericId);
+      }
+    }
+    return timer;
   }
   removeTimer(timerId) {
     const timer = this.getTimer(timerId);
     if (timer && !timer.hasSubscribers() && timerId !== this.defaultTimerId) {
       timer.stopCountdown();
-      const deleted = this.timers.delete(timerId);
+      let deleted = this.timers.delete(timerId);
+      if (!deleted && typeof timerId === "number") {
+        deleted = this.timers.delete(timerId.toString());
+      } else if (!deleted && typeof timerId === "string") {
+        const numericId = Number(timerId);
+        if (!isNaN(numericId)) {
+          deleted = this.timers.delete(numericId);
+        }
+      }
       if (deleted) {
         this.scheduleNextSave();
       }
@@ -50472,12 +50519,22 @@ class TimerManager {
       expired
     };
   }
+  debug() {
+    console.log("TimerManager Debug Info:");
+    console.log("- Initialized:", this.isInitialized);
+    console.log("- Total timers:", this.timers.size);
+    console.log("- Timer keys:", Array.from(this.timers.keys()));
+    console.log("- Default timer ID:", this.defaultTimerId);
+    console.log("- Has default timer:", this.timers.has(this.defaultTimerId));
+  }
   destroy() {
     if (this.saveInterval) {
       clearInterval(this.saveInterval);
     }
     this.saveToFile().then(() => {
       console.log("Timer manager destroyed and data saved");
+    }).catch((error) => {
+      console.error("Error saving on destroy:", error);
     });
     for (const timer of this.timers.values()) {
       timer.stopCountdown();
@@ -50745,7 +50802,39 @@ var createWsTimerRoutes = (timerManager) => async (fastify) => {
 };
 function handleWebSocketConnection(connection, timerId, timerManager) {
   console.log(`\uD83D\uDD0C New WebSocket connection request for timerId: ${timerId}`);
-  let timer = getTimer(timerId, timerManager);
+  if (!timerManager) {
+    console.error("❌ TimerManager is undefined!");
+    connection.close();
+    return;
+  }
+  if (typeof timerManager.getOrCreateTimer !== "function") {
+    console.error("❌ TimerManager.getOrCreateTimer is not a function!");
+    connection.close();
+    return;
+  }
+  let timer = null;
+  try {
+    timer = getTimer(timerId, timerManager);
+    if (!timer) {
+      console.error(`❌ Failed to create/get timer for timerId: ${timerId}`);
+      connection.send(JSON.stringify({
+        type: "error",
+        message: `Failed to initialize timer ${timerId}`,
+        timerId
+      }));
+      connection.close();
+      return;
+    }
+  } catch (error) {
+    console.error(`❌ Error getting timer ${timerId}:`, error);
+    connection.send(JSON.stringify({
+      type: "error",
+      message: `Error initializing timer ${timerId}`,
+      timerId
+    }));
+    connection.close();
+    return;
+  }
   const subscriber = {
     id: Math.random().toString(36).substr(2, 9),
     send: (data) => {
@@ -50759,25 +50848,47 @@ function handleWebSocketConnection(connection, timerId, timerManager) {
     }
   };
   console.log(`✅ WebSocket connection established: ${subscriber.id} for timer ${timerId}`);
-  timer.subscribe(subscriber);
-  subscriber.send(JSON.stringify({
-    type: "connected",
-    time: timer.getTime(),
-    state: timer.getState(),
-    timerId,
-    subscriberId: subscriber.id
-  }));
+  try {
+    if (timer && typeof timer.subscribe === "function") {
+      timer.subscribe(subscriber);
+    } else {
+      console.error(`❌ Timer ${timerId} doesn't have subscribe method`);
+      connection.close();
+      return;
+    }
+  } catch (error) {
+    console.error(`❌ Error subscribing to timer ${timerId}:`, error);
+    connection.close();
+    return;
+  }
+  try {
+    subscriber.send(JSON.stringify({
+      type: "connected",
+      time: timer.getTime(),
+      state: timer.getState(),
+      timerId,
+      subscriberId: subscriber.id
+    }));
+  } catch (error) {
+    console.error(`❌ Error sending initial state:`, error);
+  }
   const heartbeatInterval = setInterval(() => {
     if (connection.readyState === 1) {
-      timer = getTimer(timerId, timerManager);
-      console.log("uodate timer", timer);
-      subscriber.send(JSON.stringify({
-        type: "heartbeat",
-        time: timer.getTime(),
-        state: timer.getState(),
-        timerId,
-        timestamp: Date.now()
-      }));
+      try {
+        const currentTimer = getTimer(timerId, timerManager);
+        if (currentTimer) {
+          subscriber.send(JSON.stringify({
+            type: "heartbeat",
+            time: currentTimer.getTime(),
+            state: currentTimer.getState(),
+            timerId,
+            timestamp: Date.now()
+          }));
+        }
+      } catch (error) {
+        console.error(`❌ Error in heartbeat for timer ${timerId}:`, error);
+        clearInterval(heartbeatInterval);
+      }
     } else {
       clearInterval(heartbeatInterval);
     }
@@ -50795,7 +50906,6 @@ function handleWebSocketConnection(connection, timerId, timerManager) {
           message: `Timer ${timerId} not found.`,
           timerId
         }));
-        connection.close();
         return;
       }
       let actionExecuted = false;
@@ -50896,18 +51006,36 @@ function handleWebSocketConnection(connection, timerId, timerManager) {
     if (heartbeatInterval) {
       clearInterval(heartbeatInterval);
     }
-    const currentTimer = getTimer(timerId, timerManager);
-    if (currentTimer) {
-      currentTimer.unsubscribe(subscriber.id);
-      console.log(`Unsubscribed ${subscriber.id} from timer ${timerId}`);
+    try {
+      const currentTimer = getTimer(timerId, timerManager);
+      if (currentTimer && typeof currentTimer.unsubscribe === "function") {
+        currentTimer.unsubscribe(subscriber.id);
+        console.log(`Unsubscribed ${subscriber.id} from timer ${timerId}`);
+      }
+    } catch (error) {
+      console.error(`❌ Error during cleanup for ${subscriber.id}:`, error);
     }
   }
 }
 function getTimer(timerId, timerManager) {
-  let timer = timerManager.getOrCreateTimer(timerId);
-  if (!timer)
-    timer = timerManager.getOrCreateTimer(timerId);
-  return timer;
+  try {
+    console.log("getOrCreateTimer", typeof timerManager?.getOrCreateTimer);
+    console.log("typeof", typeof timerId);
+    if (!timerManager) {
+      console.error("TimerManager is null or undefined");
+      return null;
+    }
+    if (typeof timerManager.getOrCreateTimer !== "function") {
+      console.error("getOrCreateTimer is not a function");
+      return null;
+    }
+    const timer = timerManager.getOrCreateTimer(timerId);
+    console.log("Timer retrieved:", timer ? "success" : "failed");
+    return timer || null;
+  } catch (error) {
+    console.error("Error in getTimer:", error);
+    return null;
+  }
 }
 
 // src/index.ts

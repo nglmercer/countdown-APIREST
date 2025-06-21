@@ -1,10 +1,8 @@
 // src/ws.ts
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
-// REMOVED: import { timerManager } from './core/timer-manager';
-import { TimerManager } from './core/timer-manager'; // Importamos el TIPO, no la instancia
+import { TimerManager } from './core/timer-manager';
 import { TimerInstance } from './core/timer-instance';
 import { WebSocketLike } from './types/timer.types';
-
 
 // El tipo para los mensajes que vienen del cliente
 interface ClientActionMessage {
@@ -23,10 +21,9 @@ export const createWsTimerRoutes = (timerManager: TimerManager): FastifyPluginAs
 
   const handler = {
     websocket: true,
-    // CAMBIO: Pasamos el timerManager al manejador de la conexión
     handler: (connection: any, req: any) => {
       const timerId = getTimerIdFromRequest(req);
-      handleWebSocketConnection(connection, timerId, timerManager); // <-- Inyectamos el manager
+      handleWebSocketConnection(connection, timerId, timerManager);
     },
   };  
   fastify.get('/ws', handler);
@@ -36,12 +33,50 @@ export const createWsTimerRoutes = (timerManager: TimerManager): FastifyPluginAs
 function handleWebSocketConnection(
   connection: any,
   timerId: string | number,
-  timerManager: TimerManager // <-- Recibe la instancia compartida
+  timerManager: TimerManager
 ) {
   console.log(`🔌 New WebSocket connection request for timerId: ${timerId}`);
   
-  // Obtener o crear la instancia del timer
-  let timer = getTimer(timerId,timerManager);
+  // VALIDACIÓN CRÍTICA: Verificar que timerManager existe
+  if (!timerManager) {
+    console.error('❌ TimerManager is undefined!');
+    connection.close();
+    return;
+  }
+
+  // Verificar que el método existe
+  if (typeof timerManager.getOrCreateTimer !== 'function') {
+    console.error('❌ TimerManager.getOrCreateTimer is not a function!');
+    connection.close();
+    return;
+  }
+
+  // Obtener o crear la instancia del timer con mejor manejo de errores
+  let timer: TimerInstance | null = null;
+  
+  try {
+    timer = getTimer(timerId, timerManager);
+    
+    if (!timer) {
+      console.error(`❌ Failed to create/get timer for timerId: ${timerId}`);
+      connection.send(JSON.stringify({
+        type: 'error',
+        message: `Failed to initialize timer ${timerId}`,
+        timerId: timerId
+      }));
+      connection.close();
+      return;
+    }
+  } catch (error) {
+    console.error(`❌ Error getting timer ${timerId}:`, error);
+    connection.send(JSON.stringify({
+      type: 'error',
+      message: `Error initializing timer ${timerId}`,
+      timerId: timerId
+    }));
+    connection.close();
+    return;
+  }
 
   // Crear un objeto 'subscriber' que se ajuste a nuestra interfaz WebSocketLike
   const subscriber: WebSocketLike = {
@@ -61,33 +96,55 @@ function handleWebSocketConnection(
   console.log(`✅ WebSocket connection established: ${subscriber.id} for timer ${timerId}`);
   
   // SUSCRIBIRSE AL TIMER para recibir actualizaciones
-  timer.subscribe(subscriber);
+  try {
+    if (timer && typeof timer.subscribe === 'function') {
+      timer.subscribe(subscriber);
+    } else {
+      console.error(`❌ Timer ${timerId} doesn't have subscribe method`);
+      connection.close();
+      return;
+    }
+  } catch (error) {
+    console.error(`❌ Error subscribing to timer ${timerId}:`, error);
+    connection.close();
+    return;
+  }
 
   // Enviar estado inicial inmediatamente
-  subscriber.send(JSON.stringify({
-    type: 'connected',
-    time: timer.getTime(),
-    state: timer.getState(),
-    timerId: timerId,
-    subscriberId: subscriber.id
-  }));
+  try {
+    subscriber.send(JSON.stringify({
+      type: 'connected',
+      time: timer.getTime(),
+      state: timer.getState(),
+      timerId: timerId,
+      subscriberId: subscriber.id
+    }));
+  } catch (error) {
+    console.error(`❌ Error sending initial state:`, error);
+  }
 
   // HEARTBEAT para mantener la conexión viva y sincronizada
   const heartbeatInterval = setInterval(() => {
     if (connection.readyState === 1) {
-      timer = getTimer(timerId,timerManager);
-      console.log("uodate timer",timer)
-      subscriber.send(JSON.stringify({
-        type: 'heartbeat',
-        time: timer.getTime(),
-        state: timer.getState(),
-        timerId: timerId,
-        timestamp: Date.now()
-      }));
+      try {
+        const currentTimer = getTimer(timerId, timerManager);
+        if (currentTimer) {
+          subscriber.send(JSON.stringify({
+            type: 'heartbeat',
+            time: currentTimer.getTime(),
+            state: currentTimer.getState(),
+            timerId: timerId,
+            timestamp: Date.now()
+          }));
+        }
+      } catch (error) {
+        console.error(`❌ Error in heartbeat for timer ${timerId}:`, error);
+        clearInterval(heartbeatInterval);
+      }
     } else {
       clearInterval(heartbeatInterval);
     }
-  }, 2000); // Cada 2 segundos para mejor sincronización
+  }, 2000);
 
   // Manejar mensajes entrantes del cliente
   connection.on('message', (data: Buffer) => {
@@ -99,14 +156,13 @@ function handleWebSocketConnection(
       const { action, value } = message;
 
       // Verificar que el timer aún existe
-      const currentTimer = getTimer(timerId,timerManager);
+      const currentTimer = getTimer(timerId, timerManager);
       if (!currentTimer) {
         subscriber.send(JSON.stringify({ 
           type: 'error', 
           message: `Timer ${timerId} not found.`,
           timerId: timerId
         }));
-        connection.close();
         return;
       }
 
@@ -230,18 +286,42 @@ function handleWebSocketConnection(
     }
     
     // Desuscribirse del timer
-    const currentTimer = getTimer(timerId,timerManager);
-    if (currentTimer) {
-      currentTimer.unsubscribe(subscriber.id);
-      console.log(`Unsubscribed ${subscriber.id} from timer ${timerId}`);
+    try {
+      const currentTimer = getTimer(timerId, timerManager);
+      if (currentTimer && typeof currentTimer.unsubscribe === 'function') {
+        currentTimer.unsubscribe(subscriber.id);
+        console.log(`Unsubscribed ${subscriber.id} from timer ${timerId}`);
+      }
+    } catch (error) {
+      console.error(`❌ Error during cleanup for ${subscriber.id}:`, error);
     }
   }
 }
+
 function getTimer(
   timerId: string | number,
-  timerManager: TimerManager // <-- Recibe la instancia compartida
-){
-  let timer = timerManager.getOrCreateTimer(timerId)
-  if (!timer) timer = timerManager.getOrCreateTimer(timerId);
-  return timer;
+  timerManager: TimerManager
+): TimerInstance | null {
+  try {
+    console.log('getOrCreateTimer', typeof timerManager?.getOrCreateTimer);
+    console.log('typeof', typeof timerId);
+    
+    if (!timerManager) {
+      console.error('TimerManager is null or undefined');
+      return null;
+    }
+    
+    if (typeof timerManager.getOrCreateTimer !== 'function') {
+      console.error('getOrCreateTimer is not a function');
+      return null;
+    }
+    
+    const timer = timerManager.getOrCreateTimer(timerId);
+    console.log('Timer retrieved:', timer ? 'success' : 'failed');
+    
+    return timer || null;
+  } catch (error) {
+    console.error('Error in getTimer:', error);
+    return null;
+  }
 }

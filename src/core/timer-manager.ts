@@ -10,19 +10,31 @@ export class TimerManager {
   private defaultTimerId: string | number = TIMER_CONSTANTS.DEFAULT_TIMER_ID;
   private saveInterval: NodeJS.Timeout | null = null;
   private storageService: StorageService;
+  private isInitialized: boolean = false;
 
   constructor(defaultInitialTime: number = TIMER_CONSTANTS.DEFAULT_INITIAL_TIME, storageFile?: string) {
     this.storageService = new StorageService(storageFile);
+    // Inicializar sincrónicamente primero
+    this.syncInitialize(defaultInitialTime);
+    // Luego cargar datos de forma asíncrona
     this.initializeManager(defaultInitialTime);
+  }
+
+  private syncInitialize(defaultInitialTime: number): void {
+    // Crear timer por defecto inmediatamente
+    const defaultTimer = new TimerInstance(this.defaultTimerId, defaultInitialTime);
+    this.timers.set(this.defaultTimerId, defaultTimer);
+    this.isInitialized = true;
+    console.log(`Default timer created with ID: ${this.defaultTimerId}`);
   }
 
   private async initializeManager(defaultInitialTime: number): Promise<void> {
     try {
       await this.loadFromFile();
       
-      // Crear timer por defecto si no existe
+      // Verificar que el timer por defecto sigue existiendo
       if (!this.timers.has(this.defaultTimerId)) {
-        this.getOrCreateTimer(this.defaultTimerId, defaultInitialTime);
+        this.syncInitialize(defaultInitialTime);
       }
       
       // Limpiar timers expirados
@@ -30,10 +42,14 @@ export class TimerManager {
       
       // Configurar guardado automático
       this.startAutoSave();
+      
+      console.log('TimerManager fully initialized');
     } catch (error) {
       console.error('Error initializing timer manager:', error);
-      // Si hay error, crear timer por defecto
-      this.getOrCreateTimer(this.defaultTimerId, defaultInitialTime);
+      // Si hay error, asegurar que tenemos al menos el timer por defecto
+      if (!this.timers.has(this.defaultTimerId)) {
+        this.syncInitialize(defaultInitialTime);
+      }
       this.startAutoSave();
     }
   }
@@ -84,6 +100,9 @@ export class TimerManager {
   }
 
   private startAutoSave(): void {
+    if (this.saveInterval) {
+      clearInterval(this.saveInterval);
+    }
     this.saveInterval = setInterval(() => {
       this.saveToFile();
     }, TIMER_CONSTANTS.AUTO_SAVE_INTERVAL);
@@ -115,35 +134,88 @@ export class TimerManager {
     }
   }
 
+  // MÉTODO CORREGIDO - Este era el problema principal
   getOrCreateTimer(timerId: string | number, initialTime: number = TIMER_CONSTANTS.DEFAULT_INITIAL_TIME): TimerInstance {
-    if (!this.timers.has(timerId)) {
-      console.log(`Creating new timer instance with ID: ${timerId}`);
-      console.log(`Creating new timer`,this.timers);
-      const timer = new TimerInstance(timerId, initialTime);
-      
-      this.timers.set(timerId, timer);
-      
-      // Guardar inmediatamente si no es el timer por defecto
-      if (timerId !== this.defaultTimerId) {
-        this.scheduleNextSave();
+    console.log(`getOrCreateTimer called with timerId: ${timerId} (type: ${typeof timerId})`);
+    console.log(`Current timers keys:`, Array.from(this.timers.keys()));
+    
+    // Normalizar el timerId para la búsqueda
+    let normalizedTimerId = timerId;
+    
+    // Si es string numérico, convertir a number para consistencia
+    if (typeof timerId === 'string' && !isNaN(Number(timerId))) {
+      normalizedTimerId = Number(timerId);
+    }
+    
+    // Buscar el timer (intentar con ambos tipos)
+    let timer = this.timers.get(normalizedTimerId);
+    if (!timer && typeof normalizedTimerId === 'number') {
+      // Si no se encontró como number, intentar como string
+      timer = this.timers.get(normalizedTimerId.toString());
+    } else if (!timer && typeof normalizedTimerId === 'string') {
+      // Si no se encontró como string, intentar como number
+      const numericId = Number(normalizedTimerId);
+      if (!isNaN(numericId)) {
+        timer = this.timers.get(numericId);
       }
     }
-    const response = this.timers.get(`${timerId}`);
-    console.log("getOrCreateTimer",response)
-    console.log("typeof",typeof `${timerId}`)
-    if (response)return response;
-    return response!;
+    
+    // Si no existe, crear uno nuevo
+    if (!timer) {
+      console.log(`Creating new timer instance with ID: ${normalizedTimerId}`);
+      timer = new TimerInstance(normalizedTimerId, initialTime);
+      this.timers.set(normalizedTimerId, timer);
+      
+      // Guardar inmediatamente si no es el timer por defecto
+      if (normalizedTimerId !== this.defaultTimerId) {
+        this.scheduleNextSave();
+      }
+      
+      console.log(`Timer created successfully. Total timers: ${this.timers.size}`);
+    } else {
+      console.log(`Existing timer found for ID: ${normalizedTimerId}`);
+    }
+    
+    return timer;
   }
 
   getTimer(timerId: string | number = this.defaultTimerId): TimerInstance | undefined {
-    return this.timers.get(timerId);
+    // Usar la misma lógica de normalización que getOrCreateTimer
+    let normalizedTimerId = timerId;
+    
+    if (typeof timerId === 'string' && !isNaN(Number(timerId))) {
+      normalizedTimerId = Number(timerId);
+    }
+    
+    let timer = this.timers.get(normalizedTimerId);
+    if (!timer && typeof normalizedTimerId === 'number') {
+      timer = this.timers.get(normalizedTimerId.toString());
+    } else if (!timer && typeof normalizedTimerId === 'string') {
+      const numericId = Number(normalizedTimerId);
+      if (!isNaN(numericId)) {
+        timer = this.timers.get(numericId);
+      }
+    }
+    
+    return timer;
   }
 
   removeTimer(timerId: string | number): boolean {
     const timer = this.getTimer(timerId);
     if (timer && !timer.hasSubscribers() && timerId !== this.defaultTimerId) {
       timer.stopCountdown();
-      const deleted = this.timers.delete(timerId);
+      
+      // Intentar eliminar con ambos tipos de key
+      let deleted = this.timers.delete(timerId);
+      if (!deleted && typeof timerId === 'number') {
+        deleted = this.timers.delete(timerId.toString());
+      } else if (!deleted && typeof timerId === 'string') {
+        const numericId = Number(timerId);
+        if (!isNaN(numericId)) {
+          deleted = this.timers.delete(numericId);
+        }
+      }
+      
       if (deleted) {
         this.scheduleNextSave();
       }
@@ -180,6 +252,16 @@ export class TimerManager {
     };
   }
 
+  // Método para debugging
+  debug(): void {
+    console.log('TimerManager Debug Info:');
+    console.log('- Initialized:', this.isInitialized);
+    console.log('- Total timers:', this.timers.size);
+    console.log('- Timer keys:', Array.from(this.timers.keys()));
+    console.log('- Default timer ID:', this.defaultTimerId);
+    console.log('- Has default timer:', this.timers.has(this.defaultTimerId));
+  }
+
   destroy(): void {
     if (this.saveInterval) {
       clearInterval(this.saveInterval);
@@ -188,6 +270,8 @@ export class TimerManager {
     // Guardar una última vez
     this.saveToFile().then(() => {
       console.log('Timer manager destroyed and data saved');
+    }).catch(error => {
+      console.error('Error saving on destroy:', error);
     });
 
     // Detener todos los timers

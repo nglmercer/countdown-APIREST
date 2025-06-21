@@ -1,15 +1,5 @@
 {
   "version": "1.0",
-  "timers": {
-    "1": {
-      "timerId": "1",
-      "currentTime": 1804,
-      "initialTime": 1624,
-      "state": "stopped",
-      "createdAt": 1749675185962,
-      "expiresAt": 1749761585962,
-      "lastSaved": 1749692396574
-    }
-  },
-  "lastCleanup": 1749692396574
+  "timers": {},
+  "lastCleanup": 1750483844666
 }
