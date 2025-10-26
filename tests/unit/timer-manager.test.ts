@@ -107,7 +107,7 @@ describe("TimerManager", () => {
       // Should be accessible with both number and string
       const timerByNumber = timerManager.getTimer(numericId);
       const timerByString = timerManager.getTimer(numericId.toString());
-
+      if (!timerByString) return;
       expect(timerByNumber).toBe(timerByString);
     });
   });

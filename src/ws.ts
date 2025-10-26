@@ -3,6 +3,7 @@ import { Elysia } from "elysia";
 import { TimerManager } from "./core/timer-manager";
 import { TimerInstance } from "./core/timer-instance";
 import { WebSocketLike } from "./types/timer.types";
+import { logger } from "./utils/logger";
 
 // El tipo para los mensajes que vienen del cliente
 interface ClientActionMessage {
@@ -34,8 +35,32 @@ export const createWsTimerRoutes = (timerManager: TimerManager) => {
         },
         open: (ws) => {
           const timerId = ws.data?.params?.timerId || "1";
-          console.log(
-            `[DEBUG] Open handler - timerId: ${timerId}, ws.data:`,
+          logger.debug(`Open handler - timerId: ${timerId}, ws.data:`, ws.data);
+          handleWebSocketConnection(ws, timerId, timerManager);
+        },
+        close: (ws) => {
+          const timerId = ws.data?.params?.timerId || "1";
+          handleWebSocketClose(ws, timerId, timerManager);
+        },
+        error: () => {
+          // WebSocket error handling
+        },
+      })
+      // WebSocket sin timerId específico (usa el default) - solo raíz exacta
+      .ws("/ws/timer/:timerId", {
+        message: (ws, message) => {
+          const timerId = ws.data?.params?.timerId;
+          handleWebSocketMessage(
+            ws,
+            message as string | Buffer<ArrayBufferLike>,
+            timerId,
+            timerManager,
+          );
+        },
+        open: (ws) => {
+          const timerId = ws.data?.params?.timerId || "1";
+          logger.debug(
+            `Timer handler - timerId: ${timerId}, ws.data:`,
             ws.data,
           );
           handleWebSocketConnection(ws, timerId, timerManager);
@@ -51,7 +76,7 @@ export const createWsTimerRoutes = (timerManager: TimerManager) => {
       // WebSocket sin timerId específico (usa el default) - solo raíz exacta
       .ws("/ws", {
         message: (ws, message) => {
-          console.log("[DEBUG] Default message handler called");
+          logger.debug("Default message handler called");
           handleWebSocketMessage(
             ws,
             message as string | Buffer<ArrayBufferLike>,
@@ -60,7 +85,7 @@ export const createWsTimerRoutes = (timerManager: TimerManager) => {
           );
         },
         open: (ws) => {
-          console.log("[DEBUG] Default open handler called");
+          logger.debug("Default open handler called");
           handleWebSocketConnection(ws, "1", timerManager);
         },
         close: (ws) => {
@@ -78,18 +103,18 @@ function handleWebSocketConnection(
   timerId: string | number,
   timerManager: TimerManager,
 ) {
-  console.log(`🔌 New WebSocket connection request for timerId: ${timerId}`);
+  logger.log(`🔌 New WebSocket connection request for timerId: ${timerId}`);
 
   // VALIDACIÓN CRÍTICA: Verificar que timerManager existe
   if (!timerManager) {
-    console.error("❌ TimerManager is undefined!");
+    logger.error("❌ TimerManager is undefined!");
     ws.close();
     return;
   }
 
   // Verificar que el método existe
   if (typeof timerManager.getOrCreateTimer !== "function") {
-    console.error("❌ TimerManager.getOrCreateTimer is not a function!");
+    logger.error("❌ TimerManager.getOrCreateTimer is not a function!");
     ws.close();
     return;
   }
@@ -101,11 +126,11 @@ function handleWebSocketConnection(
     timer = getTimer(timerId, timerManager);
 
     if (!timer) {
-      console.error(`❌ Failed to create/get timer for timerId: ${timerId}`);
+      logger.error(`❌ Failed to create/get timer for timerId: ${timerId}`);
       ws.send(
         JSON.stringify({
           type: "error",
-          message: `Failed to initialize timer ${timerId}`,
+          message: "Failed to initialize timer " + timerId,
           timerId: timerId,
         }),
       );
@@ -113,7 +138,7 @@ function handleWebSocketConnection(
       return;
     }
   } catch (error) {
-    console.error(`❌ Error getting timer ${timerId}:`, error);
+    logger.error(`❌ Error getting timer ${timerId}:`, error);
     ws.send(
       JSON.stringify({
         type: "error",
@@ -121,8 +146,6 @@ function handleWebSocketConnection(
         timerId: timerId,
       }),
     );
-    ws.close();
-    return;
   }
 
   // Crear un objeto 'subscriber' que se ajuste a nuestra interfaz WebSocketLike
@@ -136,12 +159,12 @@ function handleWebSocketConnection(
           ws.send(data);
         }
       } catch (error) {
-        console.error(`Error sending WebSocket message:`, error);
+        logger.error(`Error sending WebSocket message:`, error);
       }
     },
   };
 
-  console.log(
+  logger.log(
     `✅ WebSocket connection established: ${subscriber.id} for timer ${timerId}`,
   );
 
@@ -150,12 +173,12 @@ function handleWebSocketConnection(
     if (timer && typeof timer.subscribe === "function") {
       timer.subscribe(subscriber);
     } else {
-      console.error(`❌ Timer ${timerId} doesn't have subscribe method`);
+      logger.error(`❌ Timer ${timerId} doesn't have subscribe method`);
       ws.close();
       return;
     }
   } catch (error) {
-    console.error(`❌ Error subscribing to timer ${timerId}:`, error);
+    logger.error(`❌ Error subscribing to timer ${timerId}:`, error);
     ws.close();
     return;
   }
@@ -178,10 +201,10 @@ function handleWebSocketConnection(
       timerId: timerId.toString(),
       subscriberId: subscriber.id,
     });
-    console.log(`📤 Sending connected message: ${connectedMessage}`);
+    logger.log(`📤 Sending connected message: ${connectedMessage}`);
     ws.send(connectedMessage);
   } catch (error) {
-    console.error(`❌ Error sending connected message:`, error);
+    logger.error(`❌ Error sending connected message:`, error);
   }
 
   // HEARTBEAT para mantener la conexión viva y sincronizada
@@ -200,7 +223,7 @@ function handleWebSocketConnection(
           ws.send(heartbeatMessage);
         }
       } catch (error) {
-        console.error(`❌ Error in heartbeat for timer ${timerId}:`, error);
+        logger.error(`❌ Error in heartbeat for timer ${timerId}:`, error);
         clearInterval(ws.heartbeatInterval);
       }
     } else {
@@ -220,7 +243,7 @@ function handleWebSocketMessage(
     ws.timerSubscriber || ws.data?.timerSubscriber || (ws as any).__subscriber;
 
   if (!subscriber) {
-    console.error("❌ No subscriber found for WebSocket connection");
+    logger.error("❌ No subscriber found for WebSocket connection");
     // Try to create the subscriber if it doesn't exist
     try {
       const timer = getTimer(timerId, timerManager);
@@ -242,7 +265,7 @@ function handleWebSocketMessage(
         ws.timerSubscriber = newSubscriber;
         if (ws.data) ws.data.timerSubscriber = newSubscriber;
         (ws as any).__subscriber = newSubscriber;
-        console.log(
+        logger.log(
           `✅ Created new subscriber ${newSubscriber.id} for timer ${timerId}`,
         );
         subscriber = newSubscriber;
@@ -257,12 +280,12 @@ function handleWebSocketMessage(
         return;
       }
     } catch (error) {
-      console.error("❌ Failed to create subscriber:", error);
+      logger.error("❌ Failed to create subscriber:", error);
       ws.send(
         JSON.stringify({
           type: "error",
           message: "Connection not properly initialized",
-          timerId: timerId.toString(),
+          timerId: timerId,
         }),
       );
       return;
@@ -272,17 +295,28 @@ function handleWebSocketMessage(
   // Handle different message types from Elysia WebSocket
   let messageData: ClientActionMessage;
 
-  if (typeof message === "string") {
-    // If it's a string, parse it as JSON
-    messageData = JSON.parse(message);
-  } else if (typeof message === "object" && message !== null) {
-    // If it's already an object, cast it through unknown first
-    messageData = message as unknown as ClientActionMessage;
-  } else {
-    throw new Error("Invalid message format");
+  try {
+    if (typeof message === "string") {
+      // If it's a string, parse it as JSON
+      messageData = JSON.parse(message);
+    } else if (typeof message === "object" && message !== null) {
+      // If it's already an object, cast it through unknown first
+      messageData = message as unknown as ClientActionMessage;
+    } else {
+      throw new Error("Invalid message format");
+    }
+  } catch (parseError) {
+    // Handle JSON parsing errors specifically
+    const errorMessage = JSON.stringify({
+      type: "error",
+      message: "Invalid JSON message format",
+      timerId: timerId,
+    });
+    ws.send(errorMessage);
+    return;
   }
 
-  console.log(
+  logger.log(
     `[Timer ${timerId}] 📨 Message from ${subscriber.id}:`,
     messageData,
   );
@@ -325,7 +359,7 @@ function handleWebSocketMessage(
           const setTimeErrorMessage = JSON.stringify({
             type: "error",
             message: "setTime requires a valid non-negative number",
-            timerId: timerId,
+            timerId: currentTimer.timerId,
           });
           ws.send(setTimeErrorMessage);
         }
@@ -339,7 +373,7 @@ function handleWebSocketMessage(
           const addTimeErrorMessage = JSON.stringify({
             type: "error",
             message: "addTime requires a valid number",
-            timerId: timerId,
+            timerId: currentTimer.timerId,
           });
           ws.send(addTimeErrorMessage);
         }
@@ -353,7 +387,7 @@ function handleWebSocketMessage(
           const restTimeErrorMessage = JSON.stringify({
             type: "error",
             message: "restTime requires a valid number",
-            timerId: timerId,
+            timerId: currentTimer.timerId,
           });
           ws.send(restTimeErrorMessage);
         }
@@ -370,20 +404,21 @@ function handleWebSocketMessage(
           type: "timeUpdate",
           time: currentTimer.getTime(),
           state: currentTimer.getState(),
-          timerId: timerId,
+          timerId: currentTimer.timerId,
           source: "websocket-request",
+          timestamp: Date.now(),
         });
         ws.send(timeUpdateMessage);
         actionExecuted = true;
         break;
 
       default:
-        const unknownActionMessage = JSON.stringify({
+        const errorResponse = JSON.stringify({
           type: "error",
-          message: `Unknown action: ${action}`,
-          timerId: timerId,
+          message: `Invalid action: ${action}`,
+          timerId: currentTimer.timerId,
         });
-        ws.send(unknownActionMessage);
+        ws.send(errorResponse);
     }
 
     // Confirmar que la acción se ejecutó
@@ -394,15 +429,15 @@ function handleWebSocketMessage(
         value: value,
         time: currentTimer.getTime(),
         state: currentTimer.getState(),
-        timerId: timerId,
+        timerId: currentTimer.timerId,
       });
       ws.send(confirmationMessage);
     }
   } catch (error) {
-    console.error(`❌ Error processing message from ${subscriber.id}:`, error);
+    logger.error(`❌ Error processing message from ${subscriber.id}:`, error);
     const errorMessage = JSON.stringify({
       type: "error",
-      message: "Invalid JSON message format",
+      message: "Error processing message",
       timerId: timerId,
     });
     ws.send(errorMessage);
@@ -414,9 +449,10 @@ function handleWebSocketClose(
   timerId: string | number,
   timerManager: TimerManager,
 ) {
-  const subscriber = ws.timerSubscriber;
+  const subscriber =
+    ws.timerSubscriber || ws.data?.timerSubscriber || (ws as any).__subscriber;
   if (subscriber) {
-    console.log(
+    logger.log(
       `🔌 WebSocket connection closed: ${subscriber.id} for timer ${timerId}`,
     );
     cleanup(ws, timerId, timerManager);
@@ -448,10 +484,10 @@ function cleanup(
       subscriber
     ) {
       currentTimer.unsubscribe(subscriber.id);
-      console.log(`Unsubscribed ${subscriber.id} from timer ${timerId}`);
+      logger.log(`Unsubscribed ${subscriber.id} from timer ${timerId}`);
     }
   } catch (error) {
-    console.error(`❌ Error during cleanup for ${subscriber?.id}:`, error);
+    logger.error(`❌ Error during cleanup for ${subscriber?.id}:`, error);
   }
 }
 
@@ -461,12 +497,12 @@ function getTimer(
 ): TimerInstance | null {
   try {
     if (!timerManager) {
-      console.error("TimerManager is null or undefined");
+      logger.error("TimerManager is null or undefined");
       return null;
     }
 
     if (typeof timerManager.getOrCreateTimer !== "function") {
-      console.error("getOrCreateTimer is not a function");
+      logger.error("getOrCreateTimer is not a function");
       return null;
     }
 
@@ -474,7 +510,7 @@ function getTimer(
 
     return timer || null;
   } catch (error) {
-    console.error("Error in getTimer:", error);
+    logger.error("Error in getTimer:", error);
     return null;
   }
 }

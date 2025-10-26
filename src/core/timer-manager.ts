@@ -285,5 +285,13 @@ export class TimerManager {
     for (const timer of this.timers.values()) {
       timer.stopCountdown();
     }
+
+    // Clear in-memory timers and storage
+    this.timers.clear();
+
+    // Clean up storage file to prevent loading old timers
+    this.storageService.saveTimers({}).catch(() => {
+      // Silently handle storage cleanup
+    });
   }
 }

@@ -8,6 +8,7 @@ import {
 } from "../types/timer.types";
 import { TIMER_CONSTANTS } from "../constants/timer.constants";
 import { TimerUtils } from "../utils/timer.utils";
+import { logger } from "../utils/logger";
 
 export class TimerInstance {
   private currentTime: number;
@@ -43,7 +44,7 @@ export class TimerInstance {
       try {
         subscriber.send(messageString);
       } catch (error) {
-        console.error(
+        logger.error(
           `Error sending message to subscriber ${subscriberId} for timer ${this.timerId}:`,
           error,
         );
@@ -96,7 +97,7 @@ export class TimerInstance {
         }),
       );
     } catch (error) {
-      console.error(
+      logger.error(
         `Error sending initial state to subscriber ${subscriber.id}:`,
         error,
       );

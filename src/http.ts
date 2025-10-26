@@ -10,6 +10,14 @@ export const createTimerRoutes = (timerManager: TimerManager) => {
       // Error handler to catch all errors and return consistent format
       .onError(({ error, set }) => {
         // Return 422 for validation errors (time < 0, etc.)
+        if (!(error instanceof Error)) {
+          set.status = 400;
+          return {
+            success: false,
+            error: "Unknown error",
+          };
+        }
+
         if (
           error.message.includes("must be") ||
           error.message.includes("positive")
@@ -20,7 +28,7 @@ export const createTimerRoutes = (timerManager: TimerManager) => {
         }
         return {
           success: false,
-          error: error instanceof Error ? error.message : "Unknown error",
+          error: error.message,
         };
       })
 
@@ -123,7 +131,14 @@ export const createTimerRoutes = (timerManager: TimerManager) => {
         // For auto-create case, start with 0 instead of default time
         let timer = timerManager.getTimer(timerId);
         if (!timer) {
+          console.log(
+            `[DEBUG] Auto-creating timer ${timerId} with initial time 0`,
+          );
           timer = timerManager.getOrCreateTimer(timerId, 0);
+        } else {
+          console.log(
+            `[DEBUG] Using existing timer ${timerId} with current time ${timer.getTime()}`,
+          );
         }
         timer.add(addTime);
 
