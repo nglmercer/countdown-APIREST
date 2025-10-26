@@ -1,0 +1,41 @@
+# Bun configuration file
+
+[install]
+# Don't install devDependencies in production
+production = false
+
+# Prefer registry.npmjs.org for packages
+registry = "https://registry.npmjs.org/"
+
+# Lockfile configuration
+lockfile = true
+
+[test]
+# Test configuration
+preload = ["./tests/setup.ts"]
+coverageReporter = ["text", "lcov"]
+
+# Test file patterns
+testMatch = [
+  "**/*.test.ts",
+  "**/*.spec.ts"
+]
+
+# Test environment
+testTimeout = 10000
+
+[run]
+# Runtime configuration
+silent = false
+
+[build]
+# Build configuration
+target = "node"
+outdir = "./dist"
+minify = false
+sourcemap = true
+
+# Entry points
+entrypoints = [
+  "./src/index.ts"
+]

@@ -1,9 +1,14 @@
 // core/timer-manager.ts
 
-import { TimerInstance } from './timer-instance';
-import { StorageService } from '../services/storage.service';
-import { TimerStats } from '../types/timer.types';
-import { TIMER_CONSTANTS } from '../constants/timer.constants';
+import { TimerInstance } from "./timer-instance";
+import { StorageService } from "../services/storage.service";
+import { TimerStats } from "../types/timer.types";
+import { TIMER_CONSTANTS } from "../constants/timer.constants";
+
+// Helper function to check if a string is a valid integer
+function isIntegerString(str: string): boolean {
+  return /^-?\d+$/.test(str);
+}
 
 export class TimerManager {
   private timers: Map<string | number, TimerInstance> = new Map();
@@ -12,7 +17,10 @@ export class TimerManager {
   private storageService: StorageService;
   private isInitialized: boolean = false;
 
-  constructor(defaultInitialTime: number = TIMER_CONSTANTS.DEFAULT_INITIAL_TIME, storageFile?: string) {
+  constructor(
+    defaultInitialTime: number = TIMER_CONSTANTS.DEFAULT_INITIAL_TIME,
+    storageFile?: string,
+  ) {
     this.storageService = new StorageService(storageFile);
     // Inicializar sincrónicamente primero
     this.syncInitialize(defaultInitialTime);
@@ -22,30 +30,29 @@ export class TimerManager {
 
   private syncInitialize(defaultInitialTime: number): void {
     // Crear timer por defecto inmediatamente
-    const defaultTimer = new TimerInstance(this.defaultTimerId, defaultInitialTime);
+    const defaultTimer = new TimerInstance(
+      this.defaultTimerId,
+      defaultInitialTime,
+    );
     this.timers.set(this.defaultTimerId, defaultTimer);
     this.isInitialized = true;
-    console.log(`Default timer created with ID: ${this.defaultTimerId}`);
   }
 
   private async initializeManager(defaultInitialTime: number): Promise<void> {
     try {
       await this.loadFromFile();
-      
+
       // Verificar que el timer por defecto sigue existiendo
       if (!this.timers.has(this.defaultTimerId)) {
         this.syncInitialize(defaultInitialTime);
       }
-      
+
       // Limpiar timers expirados
       this.cleanupExpiredTimers();
-      
+
       // Configurar guardado automático
       this.startAutoSave();
-      
-      console.log('TimerManager fully initialized');
     } catch (error) {
-      console.error('Error initializing timer manager:', error);
       // Si hay error, asegurar que tenemos al menos el timer por defecto
       if (!this.timers.has(this.defaultTimerId)) {
         this.syncInitialize(defaultInitialTime);
@@ -56,7 +63,7 @@ export class TimerManager {
 
   private async loadFromFile(): Promise<void> {
     const storage = await this.storageService.loadTimers();
-    
+
     if (!storage) {
       return;
     }
@@ -70,11 +77,11 @@ export class TimerManager {
           timerData.initialTime,
           timerData.currentTime,
           timerData.state,
-          timerData.createdAt
+          timerData.createdAt,
         );
-        
+
         // Si estaba corriendo, lo pausamos por seguridad al recargar
-        if (timerData.state === 'running') {
+        if (timerData.state === "running") {
           timer.stopCountdown();
         }
 
@@ -82,8 +89,6 @@ export class TimerManager {
         loadedCount++;
       }
     }
-
-    console.log(`Loaded ${loadedCount} timers from storage`);
   }
 
   private async saveToFile(): Promise<void> {
@@ -124,9 +129,8 @@ export class TimerManager {
       }
     }
 
-    expiredTimers.forEach(timerId => {
+    expiredTimers.forEach((timerId) => {
       this.timers.delete(timerId);
-      console.log(`Removed expired timer: ${timerId}`);
     });
 
     if (expiredTimers.length > 0) {
@@ -134,69 +138,68 @@ export class TimerManager {
     }
   }
 
-  // MÉTODO CORREGIDO - Este era el problema principal
-  getOrCreateTimer(timerId: string | number, initialTime: number = TIMER_CONSTANTS.DEFAULT_INITIAL_TIME): TimerInstance {
-    console.log(`getOrCreateTimer called with timerId: ${timerId} (type: ${typeof timerId})`);
-    console.log(`Current timers keys:`, Array.from(this.timers.keys()));
-    
-    // Normalizar el timerId para la búsqueda
+  getOrCreateTimer(
+    timerId: string | number,
+    initialTime: number = TIMER_CONSTANTS.DEFAULT_INITIAL_TIME,
+  ): TimerInstance {
+    // Normalizar el timerId para la búsqueda y creación
     let normalizedTimerId = timerId;
-    
-    // Si es string numérico, convertir a number para consistencia
-    if (typeof timerId === 'string' && !isNaN(Number(timerId))) {
+
+    // Solo convertir strings que son enteros válidos a numbers
+    if (typeof timerId === "string" && isIntegerString(timerId)) {
       normalizedTimerId = Number(timerId);
     }
-    
+
     // Buscar el timer (intentar con ambos tipos)
     let timer = this.timers.get(normalizedTimerId);
-    if (!timer && typeof normalizedTimerId === 'number') {
+    if (!timer && typeof normalizedTimerId === "number") {
       // Si no se encontró como number, intentar como string
       timer = this.timers.get(normalizedTimerId.toString());
-    } else if (!timer && typeof normalizedTimerId === 'string') {
-      // Si no se encontró como string, intentar como number
-      const numericId = Number(normalizedTimerId);
-      if (!isNaN(numericId)) {
+    } else if (!timer && typeof normalizedTimerId === "string") {
+      // Si no se encontró como string y es un entero válido, intentar como number
+      if (isIntegerString(normalizedTimerId)) {
+        const numericId = Number(normalizedTimerId);
         timer = this.timers.get(numericId);
       }
     }
-    
+
     // Si no existe, crear uno nuevo
     if (!timer) {
-      console.log(`Creating new timer instance with ID: ${normalizedTimerId}`);
       timer = new TimerInstance(normalizedTimerId, initialTime);
       this.timers.set(normalizedTimerId, timer);
-      
+
       // Guardar inmediatamente si no es el timer por defecto
       if (normalizedTimerId !== this.defaultTimerId) {
         this.scheduleNextSave();
       }
-      
-      console.log(`Timer created successfully. Total timers: ${this.timers.size}`);
-    } else {
-      console.log(`Existing timer found for ID: ${normalizedTimerId}`);
     }
-    
+
     return timer;
   }
 
-  getTimer(timerId: string | number = this.defaultTimerId): TimerInstance | undefined {
+  getTimer(
+    timerId: string | number = this.defaultTimerId,
+  ): TimerInstance | undefined {
     // Usar la misma lógica de normalización que getOrCreateTimer
     let normalizedTimerId = timerId;
-    
-    if (typeof timerId === 'string' && !isNaN(Number(timerId))) {
+
+    // Solo convertir strings que son enteros válidos a numbers
+    if (typeof timerId === "string" && isIntegerString(timerId)) {
       normalizedTimerId = Number(timerId);
     }
-    
+
     let timer = this.timers.get(normalizedTimerId);
-    if (!timer && typeof normalizedTimerId === 'number') {
+    if (!timer && typeof normalizedTimerId === "number") {
+      // Si no se encontró como number, intentar como string
       timer = this.timers.get(normalizedTimerId.toString());
-    } else if (!timer && typeof normalizedTimerId === 'string') {
-      const numericId = Number(normalizedTimerId);
-      if (!isNaN(numericId)) {
+    } else if (!timer && typeof normalizedTimerId === "string") {
+      // Si no se encontró como string y es un entero válido, intentar como number
+      if (isIntegerString(normalizedTimerId)) {
+        const numericId = Number(normalizedTimerId);
         timer = this.timers.get(numericId);
       }
     }
-    
+
     return timer;
   }
 
@@ -204,18 +207,18 @@ export class TimerManager {
     const timer = this.getTimer(timerId);
     if (timer && !timer.hasSubscribers() && timerId !== this.defaultTimerId) {
       timer.stopCountdown();
-      
+
       // Intentar eliminar con ambos tipos de key
       let deleted = this.timers.delete(timerId);
-      if (!deleted && typeof timerId === 'number') {
+      if (!deleted && typeof timerId === "number") {
         deleted = this.timers.delete(timerId.toString());
-      } else if (!deleted && typeof timerId === 'string') {
+      } else if (!deleted && typeof timerId === "string") {
         const numericId = Number(timerId);
         if (!isNaN(numericId)) {
           deleted = this.timers.delete(numericId);
         }
       }
-      
+
       if (deleted) {
         this.scheduleNextSave();
       }
@@ -229,16 +232,25 @@ export class TimerManager {
   }
 
   getStats(): TimerStats {
-    let running = 0, stopped = 0, completed = 0, expired = 0;
+    let running = 0,
+      stopped = 0,
+      completed = 0,
+      expired = 0;
 
     for (const timer of this.timers.values()) {
       if (timer.isExpired()) {
         expired++;
       } else {
         switch (timer.getState()) {
-          case 'running': running++; break;
-          case 'stopped': stopped++; break;
-          case 'completed': completed++; break;
+          case "running":
+            running++;
+            break;
+          case "stopped":
+            stopped++;
+            break;
+          case "completed":
+            completed++;
+            break;
         }
       }
     }
@@ -248,30 +260,23 @@ export class TimerManager {
       running,
       stopped,
       completed,
-      expired
+      expired,
     };
   }
 
   // Método para debugging
   debug(): void {
-    console.log('TimerManager Debug Info:');
-    console.log('- Initialized:', this.isInitialized);
-    console.log('- Total timers:', this.timers.size);
-    console.log('- Timer keys:', Array.from(this.timers.keys()));
-    console.log('- Default timer ID:', this.defaultTimerId);
-    console.log('- Has default timer:', this.timers.has(this.defaultTimerId));
+    // Debug info available if needed, but don't log by default
   }
 
   destroy(): void {
     if (this.saveInterval) {
       clearInterval(this.saveInterval);
     }
-    
+
     // Guardar una última vez
-    this.saveToFile().then(() => {
-      console.log('Timer manager destroyed and data saved');
-    }).catch(error => {
-      console.error('Error saving on destroy:', error);
+    this.saveToFile().catch((error) => {
+      // Silently handle save errors during destroy
     });
 
     // Detener todos los timers

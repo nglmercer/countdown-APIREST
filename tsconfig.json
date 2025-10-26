@@ -1,18 +1,74 @@
 {
   "compilerOptions": {
-    "target": "esnext",
-    "module": "esnext",
-    "lib": ["esnext"],
-    "moduleResolution": "node",
-    "esModuleInterop": true,
+    // Target moderno optimizado para Bun
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ESNext"],
+
+    // Strict type checking - recomendado para backend
     "strict": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitReturns": true,
+    "noImplicitOverride": true,
+
+    // Configuración de emisión
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
     "outDir": "./dist",
     "rootDir": "./src",
+    "removeComments": false,
+
+    // Interoperabilidad de módulos
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+
+    // Path aliases para imports limpios
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@/types/*": ["./src/types/*"],
+      "@/utils/*": ["./src/utils/*"],
+      "@/core/*": ["./src/core/*"],
+      "@/services/*": ["./src/services/*"],
+      "@/controllers/*": ["./src/controllers/*"],
+      "@/middlewares/*": ["./src/middlewares/*"],
+      "@/models/*": ["./src/models/*"],
+      "@/config/*": ["./src/config/*"],
+      "@/routes/*": ["./src/routes/*"]
+    },
+
+    // Decoradores (útil para Elysia plugins)
     "experimentalDecorators": true,
-    "emitDecoratorMetadata": true
+    "emitDecoratorMetadata": true,
+
+    // Configuración específica de Bun
+    "types": ["bun-types"],
+    "allowJs": true,
+    "checkJs": false,
+
+    // Performance
+    "skipLibCheck": true,
+    "incremental": true,
+
+    // JSX (si usas Elysia HTML)
+    "jsx": "react-jsx",
+    "jsxImportSource": "@elysiajs/html"
   },
-  "include": ["src/**/*.ts", "src/utils"],
-  "exclude": ["node_modules"]
+  "include": ["src/**/*", "tests/**/*"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "coverage",
+    "**/*.spec.ts",
+    "**/*.test.ts"
+  ]
 }

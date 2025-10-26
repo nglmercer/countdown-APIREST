@@ -1,76 +1,79 @@
 // src/index.ts
-import Fastify from 'fastify';
-import fastifyStatic from '@fastify/static';
-import fastifyWebsocket from '@fastify/websocket';
-import fastifyCors from '@fastify/cors';
-import { p2pRoutes } from './tcprouter';
-import { P2PService,p2pserver } from './p2p/p2pService';
-import { TimerManager  } from './core/timer-manager';
-import { createTimerRoutes } from './http'; // Asumiendo que moviste este archivo
-import { createWsTimerRoutes } from './ws';
-import { API_PORT } from './config';
-import { fileURLToPath } from 'url';
-import path from 'path';
+import { Elysia } from "elysia";
+import { staticPlugin } from "@elysiajs/static";
+import { cors } from "@elysiajs/cors";
+import { p2pRoutes } from "./tcprouter";
+import { P2PService, p2pserver } from "./p2p/p2pService";
+import { TimerManager } from "./core/timer-manager";
+import { createTimerRoutes } from "./http";
+import { createWsTimerRoutes } from "./ws";
+import { API_PORT } from "./config";
+import { fileURLToPath } from "url";
+import path from "path";
 
 // 👇 Estas dos líneas reemplazan __dirname en ESM
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const fastify = Fastify({ 
-  logger: true 
-});
-
 async function buildServer() {
   try {
-    // ✅ Permitir todos los orígenes (CORS abierto)
-    await fastify.register(fastifyCors, {
-      origin: true, // Permite cualquier origen
-      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-      credentials: false // Cambia a true si necesitas cookies/auth
-    });
-
-    // WebSocket
-    await fastify.register(fastifyWebsocket);
-    
-    // Static files
-    await fastify.register(fastifyStatic, {
-      root: path.join(__dirname, '..', 'public'),
-      prefix: '/',
-    });
-
-    // Rutas
+    // Crear instancia del TimerManager
     const timerManager = new TimerManager();
 
-    // 3. Crea los plugins de rutas "inyectando" la instancia del manager
-    const httpRoutes = createTimerRoutes(timerManager);
-    const wsRoutes = createWsTimerRoutes(timerManager);
+    // Crear aplicación Elysia con todos los plugins
+    const app = new Elysia()
+      // CORS
+      .use(
+        cors({
+          origin: true, // Permite cualquier origen
+          methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
+          allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+          credentials: false,
+        }),
+      )
+      // WebSocket is now built into Elysia core
+      // Static files
+      .use(
+        staticPlugin({
+          assets: path.join(__dirname, "..", "public"),
+          prefix: "/",
+        }),
+      )
+      // Rutas de timers HTTP
+      .use(createTimerRoutes(timerManager))
+      // Rutas de timers WebSocket
+      .use(createWsTimerRoutes(timerManager))
+      // Rutas P2P
+      .use(p2pRoutes)
+      // Ruta principal
+      .get("/", () => "Timer API Server with ElysiaJS")
+      // Health check
+      .get("/health", () => ({ status: "ok", timestamp: Date.now() }));
 
-    // 4. Registra los plugins en Fastify
-    await fastify.register(httpRoutes);
-    await fastify.register(wsRoutes);
-    await fastify.register(p2pRoutes);
-
-    return fastify;
+    return app;
   } catch (err) {
-    fastify.log.error(err);
+    console.error("Error building server:", err);
     process.exit(1);
   }
 }
 
 async function start() {
   try {
-    const server = await buildServer();
-    
+    const app = await buildServer();
+
     // Start the server
-    await server.listen({ 
-      port: API_PORT, 
-      host: '0.0.0.0' 
+    const server = app.listen({
+      port: API_PORT,
+      hostname: "0.0.0.0",
     });
-    
-    console.log(`🚀 Fastify server is running at http://localhost:${API_PORT}`);
-    console.log('📁 Static files served from /public');
-    console.log(`🕒 Timer WebSocket is available at ws://localhost:${API_PORT}/ws or ws://localhost:${API_PORT}/ws/YOUR_TIMER_ID`);
+
+    console.log(
+      `🚀 ElysiaJS server is running at http://localhost:${API_PORT}`,
+    );
+    console.log("📁 Static files served from /public");
+    console.log(
+      `🕒 Timer WebSocket is available at ws://localhost:${API_PORT}/ws or ws://localhost:${API_PORT}/ws/YOUR_TIMER_ID`,
+    );
 
     // Initialize P2P service
     try {
@@ -80,27 +83,23 @@ async function start() {
       p2pserver.stop();
     }
 
+    return server;
   } catch (err) {
-    fastify.log.error(err);
+    console.error("Error starting server:", err);
     process.exit(1);
   }
 }
 
 // Handle graceful shutdown
-process.on('SIGINT', async () => {
-  console.log('Received SIGINT, shutting down gracefully...');
-  fastify.close();
+process.on("SIGINT", async () => {
+  console.log("Received SIGINT, shutting down gracefully...");
   process.exit(0);
 });
 
-process.on('SIGTERM', async () => {
-  console.log('Received SIGTERM, shutting down gracefully...');
-  fastify.close();
+process.on("SIGTERM", async () => {
+  console.log("Received SIGTERM, shutting down gracefully...");
   process.exit(0);
 });
 
 // Start the server
 start();
-
-export { fastify };
-export type App = typeof fastify;

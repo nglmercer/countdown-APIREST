@@ -8,22 +8,29 @@
     "dev": "bun run --hot src/index.ts",
     "start": "bun src/index.ts",
     "preview": "node dist/index.js",
-    "build": "bun build ./src/index.ts --outdir ./dist --target node"
+    "build": "bun build ./src/index.ts --outdir ./dist --target node",
+    "test": "bun test",
+    "test:watch": "bun test --watch",
+    "test:coverage": "bun test --coverage",
+    "test:integration": "bun test tests/integration/*.test.ts",
+    "test:unit": "bun test tests/unit/*.test.ts",
+    "type-check": "tsc --noEmit",
+    "lint": "bunx eslint src/**/*.ts --fix",
+    "format": "bunx prettier --write src/**/*.ts tests/**/*.ts"
   },
   "dependencies": {
+    "@elysiajs/cors": "^1.4.0",
     "@elysiajs/node": "^1.3.0",
     "@elysiajs/static": "^1.3.0",
-    "@fastify/cors": "^11.0.1",
-    "@fastify/static": "^8.2.0",
-    "@fastify/websocket": "^11.1.0",
     "bonjour-service": "^1.3.0",
-    "elysia": "^1.0.0",
-    "fastify": "^5.3.3",
-    "ws": "^8.18.2"
+    "elysia": "^1.4.13"
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "@types/node": "^22.15.30"
+    "@types/node": "^22.15.30",
+    "@types/ws": "^8.18.1",
+    "bun-types": "latest",
+    "ws": "^8.18.3"
   },
   "module": "src/index.js"
 }

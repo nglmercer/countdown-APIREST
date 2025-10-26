@@ -1,5 +1,150 @@
 {
   "version": "1.0",
-  "timers": {},
-  "lastCleanup": 1750483844666
+  "timers": {
+    "12345": {
+      "timerId": 12345,
+      "currentTime": 90,
+      "initialTime": 90,
+      "state": "running",
+      "createdAt": 1761452350122,
+      "expiresAt": 1761538750122,
+      "lastSaved": 1761453647583
+    },
+    "test-timer-1": {
+      "timerId": "test-timer-1",
+      "currentTime": 120,
+      "initialTime": 120,
+      "state": "running",
+      "createdAt": 1761452350079,
+      "expiresAt": 1761538750079,
+      "lastSaved": 1761453647583
+    },
+    "test-timer-2": {
+      "timerId": "test-timer-2",
+      "currentTime": 180,
+      "initialTime": 180,
+      "state": "running",
+      "createdAt": 1761452350091,
+      "expiresAt": 1761538750091,
+      "lastSaved": 1761453647583
+    },
+    "zero-timer": {
+      "timerId": "zero-timer",
+      "currentTime": 0,
+      "initialTime": 0,
+      "state": "completed",
+      "createdAt": 1761452350115,
+      "expiresAt": 1761538750115,
+      "lastSaved": 1761453647583
+    },
+    "status-test": {
+      "timerId": "status-test",
+      "currentTime": 45,
+      "initialTime": 45,
+      "state": "running",
+      "createdAt": 1761452350132,
+      "expiresAt": 1761538750132,
+      "lastSaved": 1761453647583
+    },
+    "add-test": {
+      "timerId": "add-test",
+      "currentTime": 45,
+      "initialTime": 30,
+      "state": "running",
+      "createdAt": 1761452350149,
+      "expiresAt": 1761538750149,
+      "lastSaved": 1761453647583
+    },
+    "auto-add-test": {
+      "timerId": "auto-add-test",
+      "currentTime": 160,
+      "initialTime": 140,
+      "state": "stopped",
+      "createdAt": 1761452350163,
+      "expiresAt": 1761538750163,
+      "lastSaved": 1761453647583
+    },
+    "subtract-test": {
+      "timerId": "subtract-test",
+      "currentTime": 45,
+      "initialTime": 60,
+      "state": "running",
+      "createdAt": 1761452350167,
+      "expiresAt": 1761538750167,
+      "lastSaved": 1761453647583
+    },
+    "multiply-test": {
+      "timerId": "multiply-test",
+      "currentTime": 75,
+      "initialTime": 30,
+      "state": "running",
+      "createdAt": 1761452350176,
+      "expiresAt": 1761538750176,
+      "lastSaved": 1761453647583
+    },
+    "divide-test": {
+      "timerId": "divide-test",
+      "currentTime": 25,
+      "initialTime": 100,
+      "state": "running",
+      "createdAt": 1761452350196,
+      "expiresAt": 1761538750196,
+      "lastSaved": 1761453647583
+    },
+    "reset-test": {
+      "timerId": "reset-test",
+      "currentTime": 120,
+      "initialTime": 120,
+      "state": "stopped",
+      "createdAt": 1761452350212,
+      "expiresAt": 1761538750212,
+      "lastSaved": 1761453647583
+    },
+    "pause-test": {
+      "timerId": "pause-test",
+      "currentTime": 60,
+      "initialTime": 60,
+      "state": "stopped",
+      "createdAt": 1761452350351,
+      "expiresAt": 1761538750351,
+      "lastSaved": 1761453647583
+    },
+    "resume-test": {
+      "timerId": "resume-test",
+      "currentTime": 60,
+      "initialTime": 60,
+      "state": "running",
+      "createdAt": 1761452350370,
+      "expiresAt": 1761538750370,
+      "lastSaved": 1761453647583
+    },
+    "list-test-1": {
+      "timerId": "list-test-1",
+      "currentTime": 60,
+      "initialTime": 60,
+      "state": "running",
+      "createdAt": 1761452350404,
+      "expiresAt": 1761538750404,
+      "lastSaved": 1761453647583
+    },
+    "list-test-2": {
+      "timerId": "list-test-2",
+      "currentTime": 60,
+      "initialTime": 60,
+      "state": "running",
+      "createdAt": 1761452350406,
+      "expiresAt": 1761538750406,
+      "lastSaved": 1761453647583
+    },
+    "list-test-3": {
+      "timerId": "list-test-3",
+      "currentTime": 60,
+      "initialTime": 60,
+      "state": "running",
+      "createdAt": 1761452350408,
+      "expiresAt": 1761538750408,
+      "lastSaved": 1761453647583
+    }
+  },
+  "lastCleanup": 1761453647584
 }
