@@ -114,6 +114,11 @@ describe("WebSocket Integration Tests", () => {
             ws.removeListener("error", handleError);
             resolve(parsedData);
           }
+
+          // Skip unwanted message types but continue listening
+          if (shouldIgnoreMessage(parsedData)) {
+            return;
+          }
         } catch (error) {
           console.log(
             `[TEST] Error parsing message:`,
@@ -127,6 +132,16 @@ describe("WebSocket Integration Tests", () => {
             reject(error);
           }
         }
+      };
+
+      // Helper to skip unwanted message types
+      const shouldIgnoreMessage = (parsedData: any) => {
+        // Skip automatic timer messages that happen during connection
+        return (
+          parsedData.type === "initialState" ||
+          parsedData.type === "timeUpdate" ||
+          parsedData.type === "stateChange"
+        );
       };
 
       const handleError = (error: any) => {
@@ -186,6 +201,11 @@ describe("WebSocket Integration Tests", () => {
             ws.removeListener("error", handleError);
             resolve(parsedData);
           }
+
+          // Skip unwanted message types but continue listening
+          if (shouldIgnoreMessage(parsedData)) {
+            return;
+          }
         } catch (error) {
           console.log(
             `[TEST waitForMessage] Error parsing message:`,
@@ -199,6 +219,16 @@ describe("WebSocket Integration Tests", () => {
             reject(error);
           }
         }
+      };
+
+      // Helper to skip unwanted message types
+      const shouldIgnoreMessage = (parsedData: any) => {
+        // Skip automatic timer messages that happen during connection and operations
+        return (
+          parsedData.type === "initialState" ||
+          parsedData.type === "timeUpdate" ||
+          parsedData.type === "stateChange"
+        );
       };
 
       const handleError = (error: any) => {

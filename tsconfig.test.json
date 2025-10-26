@@ -1,12 +1,9 @@
 {
   "compilerOptions": {
-    // Target moderno optimizado para Bun
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "bundler",
     "lib": ["ESNext"],
-
-    // Strict type checking - recomendado para backend
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
@@ -15,22 +12,11 @@
     "exactOptionalPropertyTypes": true,
     "noImplicitReturns": true,
     "noImplicitOverride": true,
-
-    // Configuración de emisión
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    "outDir": "./dist",
-    "removeComments": false,
-
-    // Interoperabilidad de módulos
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "isolatedModules": true,
     "resolveJsonModule": true,
-
-    // Path aliases para imports limpios
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
@@ -44,31 +30,17 @@
       "@/config/*": ["./src/config/*"],
       "@/routes/*": ["./src/routes/*"]
     },
-
-    // Decoradores (útil para Elysia plugins)
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
-
-    // Configuración específica de Bun
-    "types": ["bun-types"],
+    "types": ["bun-types", "node"],
     "allowJs": true,
     "checkJs": false,
-
-    // Performance
     "skipLibCheck": true,
     "incremental": true,
-
-    // JSX (si usas Elysia HTML)
     "jsx": "react-jsx",
-    "jsxImportSource": "@elysiajs/html"
+    "jsxImportSource": "@elysiajs/html",
+    "noEmit": true
   },
-  "include": ["src/**/*"],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "coverage",
-    "tests",
-    "**/*.spec.ts",
-    "**/*.test.ts"
-  ]
+  "include": ["src/**/*", "tests/**/*"],
+  "exclude": ["node_modules", "dist", "coverage", "dist-test"]
 }

@@ -3,7 +3,7 @@ import { Elysia } from "elysia";
 import { staticPlugin } from "@elysiajs/static";
 import { cors } from "@elysiajs/cors";
 import { p2pRoutes } from "./tcprouter";
-import { P2PService, p2pserver } from "./p2p/p2pService";
+import { p2pserver } from "./p2p/p2pService";
 import { TimerManager } from "./core/timer-manager";
 import { createTimerRoutes } from "./http";
 import { createWsTimerRoutes } from "./ws";

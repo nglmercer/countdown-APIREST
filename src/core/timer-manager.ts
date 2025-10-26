@@ -15,7 +15,6 @@ export class TimerManager {
   private defaultTimerId: string | number = TIMER_CONSTANTS.DEFAULT_TIMER_ID;
   private saveInterval: NodeJS.Timeout | null = null;
   private storageService: StorageService;
-  private isInitialized: boolean = false;
 
   constructor(
     defaultInitialTime: number = TIMER_CONSTANTS.DEFAULT_INITIAL_TIME,
@@ -35,7 +34,6 @@ export class TimerManager {
       defaultInitialTime,
     );
     this.timers.set(this.defaultTimerId, defaultTimer);
-    this.isInitialized = true;
   }
 
   private async initializeManager(defaultInitialTime: number): Promise<void> {
@@ -69,7 +67,7 @@ export class TimerManager {
     }
 
     let loadedCount = 0;
-    for (const [key, timerData] of Object.entries(storage.timers)) {
+    for (const [, timerData] of Object.entries(storage.timers)) {
       // Verificar si el timer no ha expirado
       if (Date.now() < timerData.expiresAt) {
         const timer = new TimerInstance(
@@ -269,13 +267,17 @@ export class TimerManager {
     // Debug info available if needed, but don't log by default
   }
 
+  getAllTimers(): TimerInstance[] {
+    return Array.from(this.timers.values());
+  }
+
   destroy(): void {
     if (this.saveInterval) {
       clearInterval(this.saveInterval);
     }
 
     // Guardar una última vez
-    this.saveToFile().catch((error) => {
+    this.saveToFile().catch(() => {
       // Silently handle save errors during destroy
     });
 

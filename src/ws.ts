@@ -1,5 +1,5 @@
 // src/ws.ts
-import { Elysia, t } from "elysia";
+import { Elysia } from "elysia";
 import { TimerManager } from "./core/timer-manager";
 import { TimerInstance } from "./core/timer-instance";
 import { WebSocketLike } from "./types/timer.types";
@@ -17,68 +17,47 @@ interface ClientActionMessage {
   value?: number;
 }
 
-const getTimerIdFromParams = (params: any): string | number => {
-  const { timerId: rawTimerId } = params as { timerId: string };
-  if (rawTimerId === undefined || rawTimerId === "") {
-    return 1; // ID del temporizador por defecto
-  }
-  return rawTimerId;
-};
-
 export const createWsTimerRoutes = (timerManager: TimerManager) => {
   return (
     new Elysia()
       // WebSocket para conexión específica con timerId exacto primero
       // WebSocket con timerId específico (más específico primero)
       .ws("/ws/:timerId", {
-        message: (ws, message, { params }) => {
-          const timerId = getTimerIdFromParams(params);
-          // Ensure subscriber is attached before handling message
-          if (!ws.timerSubscriber) {
-            const timer = getTimer(timerId, timerManager);
-            if (timer) {
-              const subscriber: WebSocketLike = {
-                id: Math.random().toString(36).substr(2, 9),
-                send: (data: string) => {
-                  try {
-                    if (ws.readyState === 1) {
-                      ws.send(data);
-                    }
-                  } catch (error) {
-                    console.error(`Error sending WebSocket message:`, error);
-                  }
-                },
-              };
-              timer.subscribe(subscriber);
-              ws.timerSubscriber = subscriber;
-            }
-          }
-          handleWebSocketMessage(ws, message, timerId, timerManager);
+        message: (ws, message) => {
+          const timerId = ws.data?.params?.timerId;
+          handleWebSocketMessage(
+            ws,
+            message as string | Buffer<ArrayBufferLike>,
+            timerId,
+            timerManager,
+          );
         },
-        open: (ws, context) => {
-          const timerId = context?.params
-            ? getTimerIdFromParams(context.params)
-            : "1";
+        open: (ws) => {
+          const timerId = ws.data?.params?.timerId || "1";
+          console.log(
+            `[DEBUG] Open handler - timerId: ${timerId}, ws.data:`,
+            ws.data,
+          );
           handleWebSocketConnection(ws, timerId, timerManager);
         },
-        close: (ws, context) => {
-          const timerId = context?.params
-            ? getTimerIdFromParams(context.params)
-            : "1";
+        close: (ws) => {
+          const timerId = ws.data?.params?.timerId || "1";
           handleWebSocketClose(ws, timerId, timerManager);
         },
-        error: (ws, error, context) => {
-          const timerId = context?.params
-            ? getTimerIdFromParams(context.params)
-            : "1";
-          handleWebSocketError(ws, error, timerId, timerManager);
+        error: () => {
+          // WebSocket error handling
         },
       })
       // WebSocket sin timerId específico (usa el default) - solo raíz exacta
       .ws("/ws", {
         message: (ws, message) => {
           console.log("[DEBUG] Default message handler called");
-          handleWebSocketMessage(ws, message, "1", timerManager);
+          handleWebSocketMessage(
+            ws,
+            message as string | Buffer<ArrayBufferLike>,
+            "1",
+            timerManager,
+          );
         },
         open: (ws) => {
           console.log("[DEBUG] Default open handler called");
@@ -87,8 +66,8 @@ export const createWsTimerRoutes = (timerManager: TimerManager) => {
         close: (ws) => {
           handleWebSocketClose(ws, "1", timerManager);
         },
-        error: (ws, error) => {
-          handleWebSocketError(ws, error, "1", timerManager);
+        error: () => {
+          // WebSocket error handling
         },
       })
   );
@@ -181,25 +160,29 @@ function handleWebSocketConnection(
     return;
   }
 
-  // Guardar referencia al subscriber en el websocket para cleanup
+  // Guardar referencia al subscriber en el websocket para cleanup - usar múltiples estrategias para persistencia
   ws.timerSubscriber = subscriber;
+  // También intentar guardar en data si existe
+  if (ws.data) {
+    ws.data.timerSubscriber = subscriber;
+  }
+  // Asignar directamente como propiedad para máxima compatibilidad
+  (ws as any).__subscriber = subscriber;
 
-  // Enviar estado inicial con un pequeño retraso para evitar condición de carrera
-  setTimeout(() => {
-    try {
-      const connectedMessage = JSON.stringify({
-        type: "connected",
-        time: timer.getTime(),
-        state: timer.getState(),
-        timerId: timerId,
-        subscriberId: subscriber.id,
-      });
-      console.log(`📤 Sending connected message: ${connectedMessage}`);
-      ws.send(connectedMessage);
-    } catch (error) {
-      console.error(`❌ Error sending initial state:`, error);
-    }
-  }, 50);
+  // Enviar estado inicial inmediatamente
+  try {
+    const connectedMessage = JSON.stringify({
+      type: "connected",
+      time: timer.getTime(),
+      state: timer.getState(),
+      timerId: timerId.toString(),
+      subscriberId: subscriber.id,
+    });
+    console.log(`📤 Sending connected message: ${connectedMessage}`);
+    ws.send(connectedMessage);
+  } catch (error) {
+    console.error(`❌ Error sending connected message:`, error);
+  }
 
   // HEARTBEAT para mantener la conexión viva y sincronizada
   ws.heartbeatInterval = setInterval(() => {
@@ -211,7 +194,7 @@ function handleWebSocketConnection(
             type: "heartbeat",
             time: currentTimer.getTime(),
             state: currentTimer.getState(),
-            timerId: timerId,
+            timerId: timerId.toString(),
             timestamp: Date.now(),
           });
           ws.send(heartbeatMessage);
@@ -232,7 +215,10 @@ function handleWebSocketMessage(
   timerId: string | number,
   timerManager: TimerManager,
 ) {
-  const subscriber = ws.timerSubscriber;
+  // Try multiple ways to get subscriber for maximum compatibility
+  let subscriber =
+    ws.timerSubscriber || ws.data?.timerSubscriber || (ws as any).__subscriber;
+
   if (!subscriber) {
     console.error("❌ No subscriber found for WebSocket connection");
     // Try to create the subscriber if it doesn't exist
@@ -252,16 +238,35 @@ function handleWebSocketMessage(
           },
         };
         timer.subscribe(newSubscriber);
+        // Store in multiple places for persistence
         ws.timerSubscriber = newSubscriber;
+        if (ws.data) ws.data.timerSubscriber = newSubscriber;
+        (ws as any).__subscriber = newSubscriber;
         console.log(
           `✅ Created new subscriber ${newSubscriber.id} for timer ${timerId}`,
         );
-        return handleWebSocketMessage(ws, message, timerId, timerManager);
+        subscriber = newSubscriber;
+      } else {
+        ws.send(
+          JSON.stringify({
+            type: "error",
+            message: "Connection not properly initialized",
+            timerId: timerId.toString(),
+          }),
+        );
+        return;
       }
     } catch (error) {
       console.error("❌ Failed to create subscriber:", error);
+      ws.send(
+        JSON.stringify({
+          type: "error",
+          message: "Connection not properly initialized",
+          timerId: timerId.toString(),
+        }),
+      );
+      return;
     }
-    return;
   }
 
   // Handle different message types from Elysia WebSocket
@@ -271,8 +276,8 @@ function handleWebSocketMessage(
     // If it's a string, parse it as JSON
     messageData = JSON.parse(message);
   } else if (typeof message === "object" && message !== null) {
-    // If it's already an object, use it directly
-    messageData = message as ClientActionMessage;
+    // If it's already an object, cast it through unknown first
+    messageData = message as unknown as ClientActionMessage;
   } else {
     throw new Error("Invalid message format");
   }
@@ -418,25 +423,16 @@ function handleWebSocketClose(
   }
 }
 
-function handleWebSocketError(
-  ws: any,
-  error: Error,
-  timerId: string | number,
-  timerManager: TimerManager,
-) {
-  const subscriber = ws.timerSubscriber;
-  if (subscriber) {
-    console.error(`❌ WebSocket error on connection ${subscriber.id}:`, error);
-    cleanup(ws, timerId, timerManager);
-  }
-}
+// WebSocket error handling is now inline in the route handlers
 
 function cleanup(
   ws: any,
   timerId: string | number,
   timerManager: TimerManager,
 ) {
-  const subscriber = ws.timerSubscriber;
+  // Try multiple ways to get subscriber for maximum compatibility
+  const subscriber =
+    ws.timerSubscriber || ws.data?.timerSubscriber || (ws as any).__subscriber;
 
   // Limpiar heartbeat
   if (ws.heartbeatInterval) {
@@ -464,9 +460,6 @@ function getTimer(
   timerManager: TimerManager,
 ): TimerInstance | null {
   try {
-    console.log("getOrCreateTimer", typeof timerManager?.getOrCreateTimer);
-    console.log("typeof", typeof timerId);
-
     if (!timerManager) {
       console.error("TimerManager is null or undefined");
       return null;
@@ -478,7 +471,6 @@ function getTimer(
     }
 
     const timer = timerManager.getOrCreateTimer(timerId);
-    console.log("Timer retrieved:", timer ? "success" : "failed");
 
     return timer || null;
   } catch (error) {

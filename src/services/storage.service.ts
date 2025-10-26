@@ -27,7 +27,7 @@ export class StorageService {
       return storage;
     } catch (error) {
       // Silently handle file not found errors during tests
-      if (error.code === "ENOENT") {
+      if (error instanceof Error && (error as any).code === "ENOENT") {
         return null;
       }
       throw error;
